@@ -1,5 +1,10 @@
 import { spawn } from 'node:child_process';
-import { commandExists, npxCommand, type NativeCommand } from './nativeProcess';
+import {
+  commandExists,
+  npxCommand,
+  nativeEnvironment,
+  type NativeCommand,
+} from './nativeProcess';
 import {
   copyFile,
   mkdir,
@@ -43,6 +48,7 @@ function run(
   args: string[],
   cwd: string,
   output: OutputChannel,
+  env: NodeJS.ProcessEnv,
 ) {
   output.appendLine('');
   output.appendLine(
@@ -55,7 +61,7 @@ function run(
     const child = spawn(command.file, [...command.args, ...args], {
       cwd,
       env: {
-        ...process.env,
+        ...env,
         NO_UPDATE_NOTIFIER: '1',
         CI: 'true',
       },
@@ -165,20 +171,40 @@ export async function buildNativeApplication(
     throw new Error(
       'Windows .exe builds currently run on Windows. Open the project in desktop VS Code on Windows and run the command again.',
     );
-  if (!(await commandExists({ file: 'cargo', args: [] })))
+  const toolchain = await nativeEnvironment();
+  if (!(await commandExists(toolchain.cargo, toolchain.env)))
     throw new Error(
-      'Rust/Cargo is required to build native applications. Install the Rust toolchain, then restart VS Code.',
+      'Cargo was found at ' +
+        toolchain.cargo.file +
+        ' but could not run. Check that rustup has a default Rust toolchain installed.',
     );
 
-  const npx = await npxCommand();
-  if (!(await commandExists(npx)))
+  const npx = await npxCommand(process.platform, toolchain.env);
+  if (!(await commandExists(npx, toolchain.env)))
     throw new Error(
       'Node.js/npm is required to launch the Tauri builder. Install Node.js, then restart VS Code.',
     );
 
+  output.appendLine('Cargo: ' + toolchain.cargo.file);
   const workspace = await prepare(project, host, target, output);
   let success = false;
   try {
+    if (
+      !(await commandExists(
+        { file: 'cargo', args: [] },
+        toolchain.env,
+        workspace.root,
+      )) ||
+      !(await commandExists(
+        { file: 'rustc', args: [] },
+        toolchain.env,
+        workspace.root,
+      ))
+    )
+      throw new Error(
+        'The native build environment cannot run cargo and rustc. Check your Rust toolchain installation. Cargo: ' +
+          toolchain.cargo.file,
+      );
     await run(
       npx,
       [
@@ -191,6 +217,7 @@ export async function buildNativeApplication(
       ],
       workspace.root,
       output,
+      toolchain.env,
     );
 
     if (target === 'windows') {
@@ -199,6 +226,7 @@ export async function buildNativeApplication(
         ['--yes', TAURI_CLI, 'build', '--no-bundle', '--ci', '--no-sign'],
         workspace.root,
         output,
+        toolchain.env,
       );
       const executable = join(
         workspace.tauri,
@@ -213,12 +241,14 @@ export async function buildNativeApplication(
         ['--yes', TAURI_CLI, 'android', 'init', '--ci'],
         workspace.root,
         output,
+        toolchain.env,
       );
       await run(
         npx,
         ['--yes', TAURI_CLI, 'android', 'build', '--apk', '--debug', '--ci'],
         workspace.root,
         output,
+        toolchain.env,
       );
       const apkRoot = join(
         workspace.tauri,

@@ -2,7 +2,7 @@
   "name": "language-lab",
   "displayName": "Language Lab",
   "description": "Language Lab editing, project diagnostics and interactive applications.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "publisher": "language-lab-local",
   "license": "UNLICENSED",
   "engines": {
