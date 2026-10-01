@@ -69,6 +69,8 @@ interface ReturnSignal {
 
 const MAX_STEPS = 100_000;
 
+const BUILTIN_FUNCTIONS = new Set(['randomInteger']);
+
 export function validateSource(source: string): void {
   parseSource(source);
 }
@@ -183,6 +185,9 @@ function collectFunctions(statements: Statement[]): Map<string, FunctionDefiniti
   const functions = new Map<string, FunctionDefinition>();
   for (const statement of statements) {
     if (statement.kind !== 'function') continue;
+    if (BUILTIN_FUNCTIONS.has(statement.name)) {
+      throw new LanguageError('Function "' + statement.name + '" is built in and cannot be redefined.', statement.line, statement.column);
+    }
     if (functions.has(statement.name)) {
       throw new LanguageError('Function "' + statement.name + '" is already defined.', statement.line, statement.column);
     }
@@ -373,6 +378,24 @@ function evaluate(expression: Expression, env: Environment, context: RuntimeCont
 }
 
 function callFunction(expression: Extract<Expression, { kind: 'call' }>, env: Environment, context: RuntimeContext): Value {
+  if (expression.name === 'randomInteger') {
+    if (expression.args.length !== 2) {
+      throw new LanguageError('randomInteger expects exactly 2 arguments: minimum and maximum.', expression.line, expression.column);
+    }
+
+    const minimum = evaluate(expression.args[0], env, context);
+    const maximum = evaluate(expression.args[1], env, context);
+
+    if (typeof minimum !== 'number' || typeof maximum !== 'number' || !Number.isSafeInteger(minimum) || !Number.isSafeInteger(maximum)) {
+      throw new LanguageError('randomInteger expects integer minimum and maximum values.', expression.line, expression.column);
+    }
+    if (minimum > maximum) {
+      throw new LanguageError('randomInteger minimum cannot be greater than maximum.', expression.line, expression.column);
+    }
+
+    return Math.floor(Math.random() * (maximum - minimum + 1)) + minimum;
+  }
+
   const definition = context.functions.get(expression.name);
   if (!definition) throw new LanguageError('Unknown function "' + expression.name + '".', expression.line, expression.column);
 
