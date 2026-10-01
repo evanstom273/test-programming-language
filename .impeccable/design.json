@@ -1,0 +1,270 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-01T21:48:50.468542+00:00",
+  "title": "Design System: Language Lab",
+  "extensions": {
+    "colorMeta": {
+      "workbench": {
+        "role": "neutral",
+        "displayName": "Workbench",
+        "tonalRamp": [
+          "oklch(15% 0.01802 259.71)",
+          "oklch(26% 0.01802 259.71)",
+          "oklch(37% 0.01802 259.71)",
+          "oklch(48% 0.01802 259.71)",
+          "oklch(59% 0.01802 259.71)",
+          "oklch(70% 0.01802 259.71)",
+          "oklch(82% 0.01802 259.71)",
+          "oklch(95% 0.01802 259.71)"
+        ]
+      },
+      "panel": {
+        "role": "neutral",
+        "displayName": "Panel",
+        "tonalRamp": [
+          "oklch(15% 0.02222 257.29)",
+          "oklch(26% 0.02222 257.29)",
+          "oklch(37% 0.02222 257.29)",
+          "oklch(48% 0.02222 257.29)",
+          "oklch(59% 0.02222 257.29)",
+          "oklch(70% 0.02222 257.29)",
+          "oklch(82% 0.02222 257.29)",
+          "oklch(95% 0.02222 257.29)"
+        ]
+      },
+      "editor": {
+        "role": "neutral",
+        "displayName": "Editor",
+        "tonalRamp": [
+          "oklch(15% 0.01402 258.36)",
+          "oklch(26% 0.01402 258.36)",
+          "oklch(37% 0.01402 258.36)",
+          "oklch(48% 0.01402 258.36)",
+          "oklch(59% 0.01402 258.36)",
+          "oklch(70% 0.01402 258.36)",
+          "oklch(82% 0.01402 258.36)",
+          "oklch(95% 0.01402 258.36)"
+        ]
+      },
+      "border": {
+        "role": "neutral",
+        "displayName": "Border",
+        "tonalRamp": [
+          "oklch(15% 0.02855 256.83)",
+          "oklch(26% 0.02855 256.83)",
+          "oklch(37% 0.02855 256.83)",
+          "oklch(48% 0.02855 256.83)",
+          "oklch(59% 0.02855 256.83)",
+          "oklch(70% 0.02855 256.83)",
+          "oklch(82% 0.02855 256.83)",
+          "oklch(95% 0.02855 256.83)"
+        ]
+      },
+      "text": {
+        "role": "neutral",
+        "displayName": "Text",
+        "tonalRamp": [
+          "oklch(15% 0.01257 255.51)",
+          "oklch(26% 0.01257 255.51)",
+          "oklch(37% 0.01257 255.51)",
+          "oklch(48% 0.01257 255.51)",
+          "oklch(59% 0.01257 255.51)",
+          "oklch(70% 0.01257 255.51)",
+          "oklch(82% 0.01257 255.51)",
+          "oklch(95% 0.01257 255.51)"
+        ]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Muted",
+        "tonalRamp": [
+          "oklch(15% 0.03236 254.37)",
+          "oklch(26% 0.03236 254.37)",
+          "oklch(37% 0.03236 254.37)",
+          "oklch(48% 0.03236 254.37)",
+          "oklch(59% 0.03236 254.37)",
+          "oklch(70% 0.03236 254.37)",
+          "oklch(82% 0.03236 254.37)",
+          "oklch(95% 0.03236 254.37)"
+        ]
+      },
+      "accent": {
+        "role": "primary",
+        "displayName": "Accent",
+        "tonalRamp": [
+          "oklch(15% 0.11489 256.08)",
+          "oklch(26% 0.11489 256.08)",
+          "oklch(37% 0.11489 256.08)",
+          "oklch(48% 0.11489 256.08)",
+          "oklch(59% 0.11489 256.08)",
+          "oklch(70% 0.11489 256.08)",
+          "oklch(82% 0.11489 256.08)",
+          "oklch(95% 0.11489 256.08)"
+        ]
+      },
+      "run": {
+        "role": "primary",
+        "displayName": "Run",
+        "tonalRamp": [
+          "oklch(15% 0.10572 258.30)",
+          "oklch(26% 0.10572 258.30)",
+          "oklch(37% 0.10572 258.30)",
+          "oklch(48% 0.10572 258.30)",
+          "oklch(59% 0.10572 258.30)",
+          "oklch(70% 0.10572 258.30)",
+          "oklch(82% 0.10572 258.30)",
+          "oklch(95% 0.10572 258.30)"
+        ]
+      },
+      "run-text": {
+        "role": "neutral",
+        "displayName": "Run Text",
+        "tonalRamp": [
+          "oklch(15% 0.04487 259.61)",
+          "oklch(26% 0.04487 259.61)",
+          "oklch(37% 0.04487 259.61)",
+          "oklch(48% 0.04487 259.61)",
+          "oklch(59% 0.04487 259.61)",
+          "oklch(70% 0.04487 259.61)",
+          "oklch(82% 0.04487 259.61)",
+          "oklch(95% 0.04487 259.61)"
+        ]
+      },
+      "run-hover": {
+        "role": "primary",
+        "displayName": "Run Hover",
+        "tonalRamp": [
+          "oklch(15% 0.07613 260.14)",
+          "oklch(26% 0.07613 260.14)",
+          "oklch(37% 0.07613 260.14)",
+          "oklch(48% 0.07613 260.14)",
+          "oklch(59% 0.07613 260.14)",
+          "oklch(70% 0.07613 260.14)",
+          "oklch(82% 0.07613 260.14)",
+          "oklch(95% 0.07613 260.14)"
+        ]
+      },
+      "selected": {
+        "role": "neutral",
+        "displayName": "Selected",
+        "tonalRamp": [
+          "oklch(15% 0.04642 256.16)",
+          "oklch(26% 0.04642 256.16)",
+          "oklch(37% 0.04642 256.16)",
+          "oklch(48% 0.04642 256.16)",
+          "oklch(59% 0.04642 256.16)",
+          "oklch(70% 0.04642 256.16)",
+          "oklch(82% 0.04642 256.16)",
+          "oklch(95% 0.04642 256.16)"
+        ]
+      },
+      "dialog": {
+        "role": "neutral",
+        "displayName": "Dialog",
+        "tonalRamp": [
+          "oklch(15% 0.02704 255.80)",
+          "oklch(26% 0.02704 255.80)",
+          "oklch(37% 0.02704 255.80)",
+          "oklch(48% 0.02704 255.80)",
+          "oklch(59% 0.02704 255.80)",
+          "oklch(70% 0.02704 255.80)",
+          "oklch(82% 0.02704 255.80)",
+          "oklch(95% 0.02704 255.80)"
+        ]
+      }
+    },
+    "shadows": [
+      {
+        "name": "modal",
+        "value": "0 24px 100px #0008",
+        "purpose": "Structural modal separation."
+      }
+    ],
+    "motion": [],
+    "breakpoints": [
+      {
+        "name": "split-enabled",
+        "value": "700px"
+      },
+      {
+        "name": "desktop-tools",
+        "value": "900px"
+      },
+      {
+        "name": "explorer-sidebar",
+        "value": "1200px"
+      },
+      {
+        "name": "compact-height-max",
+        "value": "500px"
+      }
+    ],
+    "rampNote": "Synthesized preview ramps are illustrative; DESIGN.md frontmatter owns implemented colors."
+  },
+  "components": [
+    {
+      "name": "Run",
+      "kind": "button",
+      "description": "Run from the implemented workbench.",
+      "html": "<button class=\"ds-run\">Run</button>",
+      "css": ".ds-run{font-family:Inter,system-ui,sans-serif;cursor:pointer;background:#91bdff;color:#101d32;min-height:44px;border:0;border-radius:6px;padding:0 17px;font-weight:700}.ds-run:hover{background:#b0ceff}.ds-run:focus-visible{outline:2px solid #85b9ff;outline-offset:-2px}",
+      "refersTo": "button-run"
+    },
+    {
+      "name": "Download action",
+      "kind": "button",
+      "description": "Download action from the implemented workbench.",
+      "html": "<button class=\"ds-action\">Download HTML</button>",
+      "css": ".ds-action{font-family:Inter,system-ui,sans-serif;cursor:pointer;min-height:44px;padding:8px 14px;border:1px solid #4a6589;border-radius:6px;background:#23364e;color:#e1edff;font-size:13px;font-weight:600}.ds-action:hover{background:#2f4a6b}.ds-action:focus-visible{outline:2px solid #85b9ff;outline-offset:-2px}"
+    },
+    {
+      "name": "Search",
+      "kind": "input",
+      "description": "Search from the implemented workbench.",
+      "html": "<label class=\"ds-search\"><input aria-label=\"Search project\" placeholder=\"Search text in this project\u2026\"></label>",
+      "css": ".ds-search{display:flex;padding:0 12px;border:1px solid #526984;border-radius:6px;background:#0d1520}.ds-search input{font:16px Inter,system-ui,sans-serif;min-height:48px;width:100%;border:0;background:transparent;color:#e7edf5;outline:none}.ds-search:focus-within{outline:2px solid #85b9ff}"
+    },
+    {
+      "name": "View switch",
+      "kind": "nav",
+      "description": "View switch from the implemented workbench.",
+      "html": "<nav class=\"ds-views\" aria-label=\"Workspace view\"><button aria-pressed=\"true\">Code</button><button aria-pressed=\"false\">App</button><button aria-pressed=\"false\">Side by side</button></nav>",
+      "css": ".ds-views{display:flex;gap:2px;padding:2px;background:#080e16;border:1px solid #283343;border-radius:7px}.ds-views button{font-family:Inter,system-ui,sans-serif;cursor:pointer;min-height:44px;padding:0 14px;border:0;border-radius:4px;background:transparent;color:#abb9cd;font-size:13px}.ds-views button[aria-pressed=true]{background:#283950;color:#edf5ff;box-shadow:inset 0 0 0 1px #405775}.ds-views button:focus-visible{outline:2px solid #85b9ff;outline-offset:-2px}",
+      "refersTo": "view-selected"
+    },
+    {
+      "name": "Build kit badge",
+      "kind": "chip",
+      "description": "Build kit badge from the implemented workbench.",
+      "html": "<span class=\"ds-badge\">Build kit</span>",
+      "css": ".ds-badge{font:500 10px Inter,system-ui,sans-serif;color:#b2c7e4;padding:2px 5px;border:1px solid #435c7b;border-radius:3px}"
+    },
+    {
+      "name": "Export help",
+      "kind": "card",
+      "description": "Export help from the implemented workbench.",
+      "html": "<section class=\"ds-help\"><strong>Next: build the APK</strong><p>Read the generated README for local and CI builds.</p></section>",
+      "css": ".ds-help{font:13px/1.65 Inter,system-ui,sans-serif;padding:16px;border:1px solid #435c7b;border-radius:6px;color:#a8b8cd;background:#131c28}.ds-help strong{color:#e7edf5;font-weight:600}.ds-help p{margin:8px 0 14px}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The code-led workbench",
+    "overview": "The confirmed Operate direction preserves the established dark editor, system typography and blue accent. Dense, task-oriented chrome makes room for source and the running app. Touch controls remain explicit; the workbench has no decorative motion or marketing treatment.",
+    "keyCharacteristics": [
+      "Dark tonal surfaces with restrained blue selection and action cues.",
+      "Visible Code, App and Side by side choices.",
+      "Touch editing with hardware-keyboard access."
+    ],
+    "rules": [],
+    "dos": [
+      "Do keep source and running app as independent, persistent panes.",
+      "Do retain explicit layout choice and labelled touch actions.",
+      "Do preserve the dark code-editor identity and native dialog behavior."
+    ],
+    "donts": [
+      "Don't reset runtime state when switching files or layouts.",
+      "Don't add decorative motion or marketing presentation to workbench controls.",
+      "Don't present a native build kit as a compiled executable."
+    ]
+  }
+}

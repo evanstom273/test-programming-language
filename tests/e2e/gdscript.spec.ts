@@ -1,6 +1,8 @@
+import { showCode, showApp } from './workbench-helpers';
 import { expect, test, type Page } from '@playwright/test';
 import { strToU8, zipSync } from 'fflate';
 async function source(page: Page, text: string) {
+  await showCode(page);
   await page.locator('.cm-content').click();
   await page.keyboard.press('ControlOrMeta+a');
   await page.keyboard.insertText(text);
@@ -122,6 +124,7 @@ test('worker lifecycle updates stop, restart and become stale; keyboard and poin
   await page.getByRole('button', { name: 'Run', exact: true }).click();
   await expect(elapsed).toBeEnabled();
   await source(page, 'print("changed").');
+  await showApp(page);
   await expect(elapsed).toBeDisabled();
 });
 test('project JSON resources are selected in the Inspector and loaded with typed validation', async ({

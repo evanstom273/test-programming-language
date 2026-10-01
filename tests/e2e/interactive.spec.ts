@@ -1,3 +1,4 @@
+import { showCode, showApp } from './workbench-helpers';
 import { expect, test, type Page } from '@playwright/test';
 
 async function openFile(page: Page, name: string) {
@@ -22,6 +23,7 @@ async function closeInspector(page: Page) {
 }
 
 async function replaceSource(page: Page, source: string) {
+  await showCode(page);
   const editor = page.locator('.cm-content');
   await editor.click();
   await page.keyboard.press('ControlOrMeta+a');
@@ -82,9 +84,11 @@ test('calculator combines Inspector, live inputs, functions, persistence, and st
   await page.getByRole('button', { name: 'Calculate', exact: true }).click();
   await expect(page.getByRole('log')).toContainText('Pocket calculator! 24');
 
+  await showCode(page);
   await page.locator('.cm-content').click();
   await page.keyboard.press('ControlOrMeta+End');
   await page.keyboard.insertText('\nprint("Changed").');
+  await showApp(page);
   await expect(page.getByText('Source or Inspector values changed. Press Run to restart the program.')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Calculate', exact: true })).toBeDisabled();
   await page.getByRole('button', { name: 'Run', exact: true }).click();
@@ -137,7 +141,9 @@ test('ordinary console and file switching remain usable', async ({ page }) => {
   await expect(page.getByRole('log')).toContainText('Hello Lyra');
   await expect(page.getByRole('group', { name: 'Program actions' })).toHaveCount(0);
   await openFile(page, 'interactive-calculator.lang');
-  await expect(page.getByRole('log')).not.toContainText('Hello Lyra');
+  await showApp(page);
+  await expect(page.getByText('Your app lives here', {exact:true})).toBeVisible();
+  await expect(page.getByRole('log')).toHaveCount(0);
   await page.getByRole('button', { name: 'Run', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Calculate', exact: true })).toBeEnabled();
   await openFile(page, 'main.lang');

@@ -1,3 +1,4 @@
+import { showCode, showApp } from './workbench-helpers';
 import { expect, test, type Page } from '@playwright/test';
 import { zipSync, strToU8 } from 'fflate';
 
@@ -13,6 +14,7 @@ async function closeExplorer(page: Page) {
   if (await closes.count()) await closes.last().click();
 }
 async function source(page: Page, text: string) {
+  await showCode(page);
   await page.locator('.cm-content').click();
   await page.keyboard.press('ControlOrMeta+a');
   await page.keyboard.insertText(text);
@@ -91,6 +93,7 @@ test('imports a multi-file project, applies module Inspector overrides, retains 
     .filter({ visible: true })
     .click();
   await closeExplorer(page);
+  await showApp(page);
   await expect(
     page.getByRole('button', { name: 'Calculate', exact: true }),
   ).toBeEnabled();
@@ -98,6 +101,7 @@ test('imports a multi-file project, applies module Inspector overrides, retains 
     page,
     'export integer: factor = 2. public function double(integer: value). return value * factor + 1. end function.',
   );
+  await showApp(page);
   await expect(
     page.getByRole('button', { name: 'Calculate', exact: true }),
   ).toBeDisabled();

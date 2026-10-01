@@ -1,8 +1,18 @@
 import { BUILTIN_SIGNATURES } from './language/builtins';
 import { KEYWORDS } from './language/lexer';
-import { useEffect, useRef } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
+import {
+  isolateHistory,
+  undo,
+  redo,
+  indentMore,
+  indentLess,
+  cursorCharLeft,
+  cursorCharRight,
+} from '@codemirror/commands';
+import { openSearchPanel } from '@codemirror/search';
 import { basicSetup } from 'codemirror';
-import { EditorState } from '@codemirror/state';
+import { Compartment, EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { StreamLanguage } from '@codemirror/language';
 import { autocompletion, completeFromList } from '@codemirror/autocomplete';
@@ -124,7 +134,8 @@ const completions = completeFromList([
   {
     label: 'scene',
     type: 'keyword',
-    apply: 'scene CharacterCreator.\n    heading "Create Character".\n    \nend scene.',
+    apply:
+      'scene CharacterCreator.\n    heading "Create Character".\n    \nend scene.',
   },
   { label: 'go to', type: 'keyword', apply: 'go to Arena.' },
   { label: 'stat', type: 'keyword', apply: 'stat "Health", health.' },
@@ -140,17 +151,73 @@ const completions = completeFromList([
   },
 ]);
 
+export interface EditorHandle {
+  command(name: string): void;
+  insert(text: string): void;
+  reveal(offset: number): void;
+}
 interface EditorProps {
+  documentId: string;
+  fontSize: number;
+  wrap: boolean;
   value: string;
   diagnostics: Diagnostic[];
   onChange: (value: string) => void;
   onRun: () => void;
 }
 
-export function Editor({ value, onChange, onRun, diagnostics }: EditorProps) {
+export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
+  { documentId, fontSize, wrap, value, onChange, onRun, diagnostics },
+  ref,
+) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const onChangeRef = useRef(onChange);
+  const documents = useRef(new Map<string, EditorState>());
+  const currentId = useRef(documentId);
+  const settings = useRef(new Compartment());
+  const makeState = useRef<(text: string) => EditorState>();
+  const appearance = () => [
+    EditorView.theme({ '&': { fontSize: fontSize + 'px' } }),
+    ...(wrap ? [EditorView.lineWrapping] : []),
+  ];
+  useImperativeHandle(ref, () => ({
+    command(name) {
+      const v = view.current;
+      if (!v) return;
+      const commands: Record<string, (v: EditorView) => boolean> = {
+        undo,
+        redo,
+        indent: indentMore,
+        outdent: indentLess,
+        left: cursorCharLeft,
+        right: cursorCharRight,
+        find: openSearchPanel,
+      };
+      commands[name]?.(v);
+      v.focus();
+    },
+    insert(text) {
+      const v = view.current;
+      if (!v || !text) return;
+      v.dispatch({
+        ...v.state.replaceSelection(text),
+        annotations: isolateHistory.of('full'),
+        userEvent: 'input',
+      });
+      v.focus();
+    },
+    reveal(offset) {
+      const v = view.current;
+      if (!v) return;
+      const at = Math.max(0, Math.min(offset, v.state.doc.length));
+      v.dispatch({
+        selection: { anchor: at },
+        effects: EditorView.scrollIntoView(at, { y: 'center' }),
+      });
+      v.focus();
+    },
+  }));
   const onRunRef = useRef(onRun);
 
   onChangeRef.current = onChange;
@@ -159,55 +226,62 @@ export function Editor({ value, onChange, onRun, diagnostics }: EditorProps) {
   useEffect(() => {
     if (!host.current) return;
 
-    const state = EditorState.create({
-      doc: value,
-      extensions: [
-        basicSetup,
-        oneDark,
-        language,
-        language.data.of({ autocomplete: completions }),
-        autocompletion(),
-        lintGutter(),
-        EditorView.lineWrapping,
-        EditorView.domEventHandlers({
-          keydown(event) {
-            if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
-              event.preventDefault();
-              onRunRef.current();
-              return true;
-            }
-            return false;
-          },
-        }),
-        EditorView.updateListener.of((update) => {
-          if (update.docChanged)
-            onChangeRef.current(update.state.doc.toString());
-        }),
-        EditorView.theme({
-          '&': { height: '100%', backgroundColor: '#0d1117', fontSize: '14px' },
-          '.cm-scroller': {
-            fontFamily:
-              'JetBrains Mono, SFMono-Regular, Consolas, Liberation Mono, monospace',
-            lineHeight: '1.7',
-            overflow: 'auto',
-          },
-          '.cm-content': { padding: '18px 0 28px' },
-          '.cm-gutters': {
-            backgroundColor: '#0d1117',
-            borderRight: '1px solid #21262d',
-            color: '#6e7681',
-          },
-          '.cm-activeLine': { backgroundColor: '#161b224d' },
-          '.cm-activeLineGutter': {
-            backgroundColor: '#161b22',
-            color: '#c9d1d9',
-          },
-          '.cm-cursor': { borderLeftColor: '#58a6ff' },
-        }),
-      ],
-    });
+    makeState.current = (text) =>
+      EditorState.create({
+        doc: text,
+        extensions: [
+          basicSetup,
+          oneDark,
+          language,
+          language.data.of({ autocomplete: completions }),
+          autocompletion(),
+          lintGutter(),
+          settings.current.of(appearance()),
+          EditorView.domEventHandlers({
+            keydown(event) {
+              if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+                event.preventDefault();
+                onRunRef.current();
+                return true;
+              }
+              return false;
+            },
+          }),
+          EditorView.updateListener.of((update) => {
+            if (update.docChanged)
+              onChangeRef.current(update.state.doc.toString());
+          }),
+          EditorView.theme({
+            '&': {
+              height: '100%',
+              backgroundColor: '#0d1117',
+            },
+            '.cm-scroller': {
+              fontFamily:
+                'JetBrains Mono, SFMono-Regular, Consolas, Liberation Mono, monospace',
+              lineHeight: '1.7',
+              overflow: 'auto',
+            },
+            '.cm-content': { padding: '18px 0 28px' },
+            '.cm-gutters': {
+              backgroundColor: '#0d1117',
+              borderRight: '1px solid #21262d',
+              color: '#6e7681',
+            },
+            '.cm-activeLine': { backgroundColor: '#161b224d' },
+            '.cm-activeLineGutter': {
+              backgroundColor: '#161b22',
+              color: '#c9d1d9',
+            },
+            '.cm-cursor': { borderLeftColor: '#58a6ff' },
+          }),
+        ],
+      });
 
-    view.current = new EditorView({ state, parent: host.current });
+    view.current = new EditorView({
+      state: makeState.current(value),
+      parent: host.current,
+    });
 
     return () => {
       view.current?.destroy();
@@ -217,12 +291,32 @@ export function Editor({ value, onChange, onRun, diagnostics }: EditorProps) {
 
   useEffect(() => {
     if (!view.current) return;
+    if (currentId.current !== documentId) {
+      documents.current.set(currentId.current, view.current.state);
+      // Bound retained undo history when a workspace contains many files.
+      if (documents.current.size > 30)
+        documents.current.delete(documents.current.keys().next().value!);
+      const cached = documents.current.get(documentId);
+      view.current.setState(
+        cached?.doc.toString() === value ? cached : makeState.current!(value),
+      );
+      currentId.current = documentId;
+      view.current.dispatch({
+        effects: settings.current.reconfigure(appearance()),
+      });
+    }
     const current = view.current.state.doc.toString();
     if (current === value) return;
     view.current.dispatch({
       changes: { from: 0, to: current.length, insert: value },
     });
-  }, [value]);
+  }, [value, documentId]);
+
+  useEffect(() => {
+    view.current?.dispatch({
+      effects: settings.current.reconfigure(appearance()),
+    });
+  }, [fontSize, wrap]);
 
   useEffect(() => {
     if (!view.current) return;
@@ -241,7 +335,7 @@ export function Editor({ value, onChange, onRun, diagnostics }: EditorProps) {
         })),
       ),
     );
-  }, [diagnostics]);
+  }, [diagnostics, documentId]);
 
   return <div ref={host} className="h-full min-h-0 overflow-hidden" />;
-}
+});
