@@ -102,6 +102,18 @@ const completions = completeFromList([
     apply: 'for x in range(10), do.\n    \nend for.',
   },
   {
+    label: 'scene',
+    type: 'keyword',
+    apply: 'scene CharacterCreator.\n    heading "Create Character".\n    \nend scene.',
+  },
+  { label: 'go to', type: 'keyword', apply: 'go to Arena.' },
+  { label: 'stat', type: 'keyword', apply: 'stat "Health", health.' },
+  {
+    label: 'progress',
+    type: 'keyword',
+    apply: 'progress "Health", health, maxHealth.',
+  },
+  {
     label: 'function',
     type: 'keyword',
     apply: 'function name().\n    \nend function.',

@@ -34,7 +34,8 @@ export interface SymbolDefinition {
     | 'namespace'
     | 'parameter'
     | 'record'
-    | 'signal';
+    | 'signal'
+    | 'scene';
   typeName?: string;
   span: Located['span'];
 }
@@ -159,7 +160,21 @@ export function analyzeProject(snapshot: ProjectSnapshot): Analysis {
       return module;
     };
     const entry = visit(snapshot.project.entry);
-    for (const module of modules) bindModule(module, modules, report);
+    const sceneNames = new Set<string>();
+    for (const module of modules)
+      for (const statement of module.statements)
+        if (statement.kind === 'scene') {
+          if (sceneNames.has(statement.name))
+            report(
+              'binding',
+              'DUPLICATE_SCENE',
+              'Scene "' + statement.name + '" is already defined in this project.',
+              statement,
+            );
+          sceneNames.add(statement.name);
+        }
+    for (const module of modules)
+      bindModule(module, modules, report, sceneNames);
     const resources = snapshot.files
       .filter((f) => f.kind === 'file')
       .map((f) => ({
@@ -242,6 +257,7 @@ function bindModule(
   module: ModuleDefinition,
   modules: ModuleDefinition[],
   report: Report,
+  sceneNames: Set<string>,
 ) {
   const globals = new Scope();
   const symbolIds = new Map<string, string>();
@@ -267,6 +283,25 @@ function bindModule(
     return id;
   }
   for (const s of module.statements) {
+    if (s.kind === 'scene') {
+      symbol(s.name, 'scene', s);
+      for (const child of s.body)
+        if (child.kind === 'declare' && child.exposure === 'input') {
+          if (globals.has(child.name))
+            report(
+              'binding',
+              'DUPLICATE_VARIABLE',
+              'Variable "' + child.name + '" already exists in this module.',
+              child,
+            );
+          else
+            globals.bind(
+              child.name,
+              child.typeName,
+              symbol(child.name, 'variable', child, child.typeName),
+            );
+        }
+    }
     if (s.kind === 'record') {
       if (
         module.statements.filter(
@@ -326,12 +361,21 @@ function bindModule(
       functions.set(s.name, s);
       symbol(s.name, 'function', s);
     }
-    if (s.kind === 'declare')
-      globals.bind(
-        s.name,
-        s.typeName,
-        symbol(s.name, 'variable', s, s.typeName),
-      );
+    if (s.kind === 'declare') {
+      if (globals.has(s.name))
+        report(
+          'binding',
+          'DUPLICATE_VARIABLE',
+          'Variable "' + s.name + '" already exists in this module.',
+          s,
+        );
+      else
+        globals.bind(
+          s.name,
+          s.typeName,
+          symbol(s.name, 'variable', s, s.typeName),
+        );
+    }
     if (s.kind === 'import') {
       if (
         aliases.has(s.alias) ||
@@ -464,12 +508,20 @@ function bindModule(
     inherited: Scope,
     top = false,
     returnType?: string,
+    scene = false,
   ) {
     const scope = new Scope(inherited);
     const local = new Set<string>();
     for (const s of statements) {
       switch (s.kind) {
         case 'declare': {
+          if (scene && s.exposure !== 'input')
+            report(
+              'binding',
+              'SCENE_DECLARATION',
+              'Scenes may declare input controls only. Keep persistent state at module top level.',
+              s,
+            );
           validType(s.typeName, s);
           if (local.has(s.name))
             report(
@@ -614,6 +666,44 @@ function bindModule(
         case 'button':
           block(s.body, globals);
           break;
+        case 'scene':
+          if (!top)
+            report(
+              'binding',
+              'NESTED_SCENE',
+              'Scenes must be declared at the top level.',
+              s,
+            );
+          block(s.body, globals, false, undefined, true);
+          break;
+        case 'goScene':
+          if (!sceneNames.has(s.name))
+            report(
+              'binding',
+              'UNKNOWN_SCENE',
+              'Unknown scene "' + s.name + '".',
+              s,
+            );
+          break;
+        case 'heading':
+        case 'paragraph':
+          break;
+        case 'stat':
+          expression(s.value, scope);
+          break;
+        case 'progress': {
+          const valueType = expression(s.value, scope);
+          const maximumType = expression(s.maximum, scope);
+          for (const type of [valueType, maximumType])
+            if (type && type !== 'integer' && type !== 'float')
+              report(
+                'type',
+                'PROGRESS_NUMBER',
+                'Progress values must be numeric.',
+                s,
+              );
+          break;
+        }
         case 'if':
           for (const b of s.branches) {
             expression(b.condition, scope);
@@ -733,9 +823,15 @@ function bindModule(
           break;
         }
         case 'handler': {
-          const expected = Object.hasOwn(HOST_EVENTS, s.event)
-            ? HOST_EVENTS[s.event]
-            : signals.get(s.event)?.map((p) => p.typeName);
+          const expected = scene
+            ? s.event === 'enter' || s.event === 'leave'
+              ? []
+              : Object.hasOwn(HOST_EVENTS, s.event) && s.event !== 'start'
+                ? HOST_EVENTS[s.event]
+                : undefined
+            : Object.hasOwn(HOST_EVENTS, s.event)
+              ? HOST_EVENTS[s.event]
+              : signals.get(s.event)?.map((p) => p.typeName);
           if (!expected)
             report('binding', 'UNKNOWN_EVENT', 'Unknown event: ' + s.event, s);
           else if (

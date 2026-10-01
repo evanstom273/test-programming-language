@@ -1,0 +1,60 @@
+integer: health = 20.
+integer: maxHealth = 20.
+integer: victories = 0.
+
+scene CharacterCreator.
+    heading "Create Character".
+    paragraph "Pick a name, then enter the arena.".
+
+    @group("Hero")
+    @label("Name")
+    input text: name = "Lyra".
+
+    button "Enter Arena", do.
+        print("Character created:", name).
+        go to Arena.
+    end button.
+end scene.
+
+scene Arena.
+    heading "Goblin Arena".
+    paragraph "Scenes replace the previous screen instead of stacking every control together.".
+
+    progress "Health", health, maxHealth.
+    stat "Victories", victories.
+
+    on enter, do.
+        print("A goblin appears!").
+    end on.
+
+    button "Take Damage", do.
+        health = health - randomInteger(1, 6).
+        if health is less than 0, do.
+            health = 0.
+        end if.
+        print("Health:", health).
+    end button.
+
+    button "Win Battle", do.
+        victories = victories + 1.
+        print("Victory!").
+        go to Victory.
+    end button.
+end scene.
+
+scene Victory.
+    heading "Victory".
+    paragraph "Your runtime state survived the scene change.".
+
+    stat "Victories", victories.
+    progress "Health", health, maxHealth.
+
+    button "Fight Again", do.
+        health = maxHealth.
+        go to Arena.
+    end button.
+
+    button "Back to Creator", do.
+        go to CharacterCreator.
+    end button.
+end scene.

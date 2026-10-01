@@ -16,11 +16,26 @@ export interface ProgramField {
   control: 'number' | 'text' | 'boolean' | 'enum' | 'array' | 'object';
   defaultValue: ExportValue;
   options?: string[];
+  scene?: string;
 }
 
 export interface ProgramButton {
   id: string;
   label: string;
+  scene?: string;
+}
+
+export type ProgramSceneItem =
+  | { kind: 'heading'; text: string }
+  | { kind: 'paragraph'; text: string }
+  | { kind: 'stat'; label: string; value: string }
+  | { kind: 'progress'; label: string; value: number; maximum: number };
+
+export interface ProgramScene {
+  name: string;
+  fileId: string;
+  path: string;
+  items: ProgramSceneItem[];
 }
 
 export interface ProgramOptions {
@@ -40,6 +55,7 @@ export interface ProgramSnapshot {
   buttons: ProgramButton[];
   output: string[];
   events: string[];
+  scene?: ProgramScene;
 }
 
 export function labelFor(name: string): string {

@@ -6,6 +6,7 @@ These documents describe the behavior on main at the time they were written. Lan
 
 ## Start here
 
+- [Scenes and rich application UI](scenes-ui.md) — multi-screen apps/games, scene transitions, status cards and progress bars.
 - [Standalone HTML applications](standalone-html.md) — export one self-contained app file, without the IDE.
 - **running-lang-files.md** — CLI commands, temporary browser runner, file opening, explicit saving, and PWA/platform support.
 
