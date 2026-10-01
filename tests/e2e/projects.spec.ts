@@ -3,6 +3,7 @@ import { zipSync, strToU8 } from 'fflate';
 
 async function explorer(page: Page) {
   const open = page.getByRole('button', { name: 'Open files', exact: true });
+  await expect(page.locator('.cm-content')).toBeAttached();
   if (await open.isVisible()) await open.click();
 }
 async function closeExplorer(page: Page) {

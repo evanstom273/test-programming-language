@@ -1,3 +1,4 @@
+import { LANG_MIME, sourceFileName } from '../runner/sourceFile';
 import { useRef } from 'react';
 import { X, FileCode2, Folder } from 'lucide-react';
 import type { WorkspaceView } from '../hooks/useWorkspace';
@@ -24,9 +25,11 @@ const actionClass =
 export function ProjectExplorer({
   view,
   close,
+  onOpenRunner,
 }: {
   view: WorkspaceView;
   close?: () => void;
+  onOpenRunner: () => void;
 }) {
   const importFile = useRef<HTMLInputElement>(null);
   const importZip = useRef<HTMLInputElement>(null);
@@ -51,6 +54,9 @@ export function ProjectExplorer({
         )}
       </div>
       <div className="ide-scrollbar min-h-0 flex-1 overflow-y-auto p-2 space-y-3">
+        <button className={actionClass + ' w-full'} onClick={onOpenRunner}>
+          Open / Run .lang File
+        </button>
         <label className="block text-xs text-[#8b949e]">
           Project
           <select
@@ -289,9 +295,14 @@ export function ProjectExplorer({
                       className={actionClass}
                       onClick={() =>
                         download(
-                          activeFile.name,
+                          !activeFile.bytes && /\.lang$/i.test(activeFile.path)
+                            ? sourceFileName(activeFile.path.split('/').at(-1)!)
+                            : activeFile.name,
                           activeFile.bytes ??
                             new TextEncoder().encode(activeFile.content),
+                          !activeFile.bytes && /\.lang$/i.test(activeFile.path)
+                            ? LANG_MIME + ';charset=utf-8'
+                            : 'application/octet-stream',
                         )
                       }
                     >

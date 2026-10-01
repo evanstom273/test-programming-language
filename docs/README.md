@@ -6,6 +6,8 @@ These documents describe the behavior on main at the time they were written. Lan
 
 ## Start here
 
+- **running-lang-files.md** — CLI commands, temporary browser runner, file opening, explicit saving, and PWA/platform support.
+
 - **language-spec.md** — the current language contract: lexical rules, statements, expressions, scope, errors, and execution semantics.
 - **syntax.md** — a practical syntax reference with valid examples.
 - **types.md** — primitive types, enums, arrays, values, equality, and numeric behavior.

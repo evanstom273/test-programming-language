@@ -1,3 +1,4 @@
+import type { programCapabilities } from '../runner/capabilities';
 import type { ProjectSnapshot } from '../workspace/model';
 import type { ExportValue, Value } from '../language/ast';
 import type { ProgramField, ProgramSnapshot } from '../language/program';
@@ -18,5 +19,6 @@ export interface WorkerResponse {
   requestId: number;
   snapshot?: ProgramSnapshot;
   fields?: ProgramField[];
+  capabilities?: ReturnType<typeof programCapabilities>;
   diagnostics: Diagnostic[];
 }

@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "noEmit": false,
+    "outDir": ".langlab-cli",
+    "rootDir": "src"
+  },
+  "include": ["src/cli/**/*.ts"]
+}

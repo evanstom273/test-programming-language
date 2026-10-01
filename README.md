@@ -2,6 +2,21 @@
 
 A browser-based IDE and interpreter for an English-like, executable-pseudocode programming language.
 
+## Running .lang files
+
+```sh
+npm ci
+npm run lang:check -- examples/hello.lang
+npm run lang:run -- examples/hello.lang
+npm run build
+npm run lang:open -- examples/interactive-calculator.lang
+```
+
+In the browser/PWA, choose **Open / Run .lang File** in Files/Explorer, or drop a
+file on desktop. Files run temporarily; choose **Save as project** to keep a copy.
+See [Running .lang files](docs/running-lang-files.md) for mobile instructions,
+OS file-handler limitations, CLI exit codes, security boundaries and dependencies.
+
 ## Projects and worker runtime
 
 Language Lab now runs projects with configurable entry points, namespaced imports,

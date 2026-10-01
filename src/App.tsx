@@ -22,7 +22,7 @@ import {
   type ExportValue
 } from './language/runtime';
 
-export default function App() {
+export default function App({ onOpenRunner }: { onOpenRunner: () => void }) {
   const view = useWorkspace();
   const { activeFile, updateCode, saved, storageError, setStorageError } = view;
   const [explorerOpen, setExplorerOpen] = useState(false);
@@ -120,7 +120,7 @@ export default function App() {
       </header>
 
       <div className="flex min-h-0 flex-1">
-        <div className="hidden w-60 shrink-0 md:block"><ProjectExplorer view={view} /></div>
+        <div className="hidden w-60 shrink-0 md:block"><ProjectExplorer onOpenRunner={onOpenRunner} view={view} /></div>
 
         <main className="flex min-w-0 flex-1 flex-col bg-[#0d1117]">
           <div className="flex h-10 shrink-0 items-end border-b border-[#21262d] bg-[#0b0f14]">
@@ -175,7 +175,7 @@ export default function App() {
       {explorerOpen && (
         <div className="fixed inset-0 z-50 md:hidden">
           <button type="button" className="absolute inset-0 bg-black/60" onClick={() => setExplorerOpen(false)} aria-label="Close explorer" />
-          <div className="absolute inset-y-0 left-0 w-[82%] max-w-[320px] shadow-2xl"><ProjectExplorer view={view} close={() => setExplorerOpen(false)} /></div>
+          <div className="absolute inset-y-0 left-0 w-[82%] max-w-[320px] shadow-2xl"><ProjectExplorer onOpenRunner={onOpenRunner} view={view} close={() => setExplorerOpen(false)} /></div>
         </div>
       )}
 

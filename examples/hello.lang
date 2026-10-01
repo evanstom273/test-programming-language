@@ -1,0 +1,6 @@
+text: name = "Lyra".
+print("Hello", name).
+
+for i in range(3), do.
+    print("Roll", i + 1, randomInteger(1, 6)).
+end for.

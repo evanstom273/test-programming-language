@@ -193,3 +193,9 @@ Rendering belongs in the host.
 ## Typed data and events extension
 
 See [GDScript-inspired features](gdscript-inspiration.md) for supported annotations, float/collection/record/resource controls, lifecycle events, signals, and worker scheduling. These extend the existing export/input/button model.
+
+## Source runner hosts
+
+`runner/sourceFile.ts` validates a device file and creates a one-file project snapshot. `runtime/host.ts` owns the transport-independent command handler shared by the browser worker and Node CLI worker. `runner/capabilities.ts` detects interactive requirements from a validated Program without executing it.
+
+`Shell.tsx` lazily selects the IDE or runner, and receives dropped/OS-launched files. `runner/Runner.tsx` reuses the session and static-analysis hooks and presentation controls. Workspace storage is imported only when Save is chosen. `cli/main.ts` owns bounded file reading, a worker watchdog, diagnostics and terminal output; `cli/serve.ts` supplies the browser host and one chosen source on loopback. See [Running .lang files](running-lang-files.md) for the execution, persistence and platform contracts.
