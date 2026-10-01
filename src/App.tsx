@@ -1,14 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Code2, Download, FileCode2, FilePlus2, Files, Play, Save, TerminalSquare, Trash2, X } from 'lucide-react';
+import { Code2, FileCode2, FilePlus2, Files, Play, Save, TerminalSquare, Trash2, X } from 'lucide-react';
 import { Editor } from './Editor';
 import { db, ensureStarterFile, type CodeFile } from './db';
 import { LanguageError } from './language/lexer';
 import { runSource } from './language/runtime';
-
-interface BeforeInstallPromptEvent extends Event {
-  prompt: () => Promise<void>;
-  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
-}
 
 export default function App() {
   const [files, setFiles] = useState<CodeFile[]>([]);
@@ -18,7 +13,6 @@ export default function App() {
   const [explorerOpen, setExplorerOpen] = useState(false);
   const [consoleOpen, setConsoleOpen] = useState(true);
   const [saved, setSaved] = useState(true);
-  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const saveTimer = useRef<number | null>(null);
 
   const activeFile = useMemo(
@@ -39,15 +33,6 @@ export default function App() {
     return () => { cancelled = true; };
   }, []);
 
-  useEffect(() => {
-    const handler = (event: Event) => {
-      event.preventDefault();
-      setInstallPrompt(event as BeforeInstallPromptEvent);
-    };
-
-    window.addEventListener('beforeinstallprompt', handler);
-    return () => window.removeEventListener('beforeinstallprompt', handler);
-  }, []);
 
   const updateCode = useCallback((content: string) => {
     if (!activeFile) return;
@@ -103,12 +88,6 @@ export default function App() {
     if (activeId === id) setActiveId(remaining[0]?.id || null);
   }, [activeId, files]);
 
-  const install = useCallback(async () => {
-    if (!installPrompt) return;
-    await installPrompt.prompt();
-    await installPrompt.userChoice;
-    setInstallPrompt(null);
-  }, [installPrompt]);
 
   const Explorer = ({ mobile = false }: { mobile?: boolean }) => (
     <aside className="flex h-full min-h-0 flex-col border-r border-[#21262d] bg-[#0d1117]">
@@ -172,11 +151,6 @@ export default function App() {
             </div>
           </div>
 
-          {installPrompt && (
-            <button type="button" onClick={install} className="hidden h-9 items-center gap-2 rounded-lg border border-[#30363d] px-3 text-xs hover:bg-[#161b22] sm:flex">
-              <Download size={14} /> Install
-            </button>
-          )}
 
           <button type="button" onClick={run} className="flex h-10 items-center gap-2 rounded-lg bg-[#238636] px-3.5 text-sm font-semibold text-white hover:bg-[#2ea043]">
             <Play size={16} fill="currentColor" /> Run
