@@ -6,6 +6,7 @@ import { readFile } from 'node:fs/promises';
 import { loadProject } from './project';
 import { analyze } from './analyze';
 import { renameConfiguration } from './configuration';
+import { buildNativeApplication, nativeFilename } from './native';
 import {
   standaloneDocument,
   standaloneFilename,
@@ -29,7 +30,8 @@ export async function activate(context: vscode.ExtensionContext) {
       synchronize: { fileEvents: watcher },
     },
   );
-  context.subscriptions.push(watcher, client);
+  const buildOutput = vscode.window.createOutputChannel('Language Lab Build');
+  context.subscriptions.push(watcher, client, buildOutput);
   let panel: vscode.WebviewPanel | undefined;
   let active: ProjectSnapshot | undefined;
   let lastFile: vscode.Uri | undefined;
@@ -82,6 +84,80 @@ export async function activate(context: vscode.ExtensionContext) {
       ),
     );
   }
+  async function checkedProject() {
+    const project = await snapshot();
+    const result = await analyze(project);
+    if (result.diagnostics.length)
+      throw new Error(
+        result.diagnostics
+          .map(
+            (d) =>
+              `${d.span.fileId}:${d.span.start.line}:${d.span.start.column} ${d.message}`,
+          )
+          .join('\n'),
+      );
+    return project;
+  }
+
+  async function nativeBuild(target: 'windows' | 'android') {
+    trusted();
+    const project = await checkedProject();
+    const extension = target === 'windows' ? 'exe' : 'apk';
+    const destination = await vscode.window.showSaveDialog({
+      saveLabel:
+        target === 'windows'
+          ? 'Build Windows application'
+          : 'Build Android APK',
+      defaultUri: vscode.Uri.file(
+        join(
+          require('node:os').homedir(),
+          nativeFilename(project, target),
+        ),
+      ),
+      filters: {
+        [target === 'windows' ? 'Windows application' : 'Android package']: [
+          extension,
+        ],
+      },
+    });
+    if (!destination) return;
+
+    buildOutput.clear();
+    buildOutput.show(true);
+    const template = await host('standalone');
+    await vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title:
+          target === 'windows'
+            ? 'Building Windows application'
+            : 'Building Android APK',
+        cancellable: false,
+      },
+      async (progress) => {
+        progress.report({
+          message:
+            target === 'windows'
+              ? 'Compiling native executable…'
+              : 'Compiling Android application…',
+        });
+        await buildNativeApplication(
+          project,
+          template,
+          target,
+          destination.fsPath,
+          buildOutput,
+        );
+      },
+    );
+    const reveal = await vscode.window.showInformationMessage(
+      'Language Lab built ' + destination.fsPath,
+      'Reveal',
+    );
+    if (reveal === 'Reveal')
+      await vscode.commands.executeCommand('revealFileInOS', destination);
+  }
+
   async function run(uri?: vscode.Uri) {
     trusted();
     const token = ++revision;
@@ -203,20 +279,16 @@ export async function activate(context: vscode.ExtensionContext) {
       revision++;
       void panel?.webview.postMessage({ type: 'stop' });
     }),
+    vscode.commands.registerCommand('langlab.buildWindows', () =>
+      safely(() => nativeBuild('windows')),
+    ),
+    vscode.commands.registerCommand('langlab.buildAndroid', () =>
+      safely(() => nativeBuild('android')),
+    ),
     vscode.commands.registerCommand('langlab.exportHTML', () =>
       safely(async () => {
         trusted();
-        const project = await snapshot();
-        const result = await analyze(project);
-        if (result.diagnostics.length)
-          throw new Error(
-            result.diagnostics
-              .map(
-                (d) =>
-                  `${d.span.fileId}:${d.span.start.line}:${d.span.start.column} ${d.message}`,
-              )
-              .join('\n'),
-          );
+        const project = await checkedProject();
         const destination = await vscode.window.showSaveDialog({
           saveLabel: 'Export standalone HTML',
           defaultUri: vscode.Uri.file(

@@ -43,6 +43,8 @@ The nearest `langlab.json` within the opened workspace selects the project and e
 - **Language Lab: Run Project / File**, or **Ctrl+Enter / Cmd+Enter**, opens the interactive App Preview beside the editor.
 - **Language Lab: Stop Application** terminates the runtime worker.
 - **Language Lab: Export Standalone HTML** exports the complete app with a Save dialog.
+- **Language Lab: Build Windows Application** produces a native `.exe` on Windows.
+- **Language Lab: Build Android APK** produces an Android `.apk` when the Android toolchain is installed.
 
 Unsaved editor buffers override disk files for analysis and Run, including edited imported modules and new named files. Changing source/assets stops the old preview; use **Run latest source**. Inputs, buttons, functions, events, resources and current-session state use the existing runtime. The preview supports Inspector configuration and application inputs as separate controls. No language code runs during static analysis.
 
@@ -76,3 +78,8 @@ npm run test:vscode
 The extension-host suite loads the files extracted from the actual VSIX, not a different source checkout. Unit tests also exercise the real LSP transport, unsaved diagnostics and filesystem boundaries. Browser tests exercise preview inputs, configuration and stale-source protection. The managed cloud environment may not reach the VS Code binary download endpoint; CI runs the real extension-host suite.
 
 Formatting, safe rename, signature help, debugging, Marketplace publishing and web-extension packaging are follow-ups. Formatting needs comment/trivia preservation; rename needs full type/member/import reference coverage. These are not advertised as implemented. Existing completion/binding is conservative and does not promise TypeScript-level inference or completion inside malformed function bodies.
+
+
+## Native builds
+
+Native packaging is described in [native-builds.md](native-builds.md). Native build commands use the same analyzed project and standalone host as HTML export, but wrap it in a Tauri v2 shell. Build commands require Workspace Trust and the target platform toolchain.

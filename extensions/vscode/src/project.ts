@@ -6,6 +6,7 @@ import type {
   ProjectFile,
 } from '../../../src/workspace/model';
 import { LIMITS, VirtualFileSystem } from '../../../src/workspace/vfs';
+import { validateApplicationSettings } from '../../../src/workspace/application';
 
 const ignored = new Set([
   '.git',
@@ -33,7 +34,12 @@ export async function loadProject(
     .sort((a, b) => b.length - a.length)[0];
   let root = dirname(file),
     manifest:
-      | { name: string; entry: string; schemaVersion: number }
+      | {
+          name: string;
+          entry: string;
+          schemaVersion: number;
+          application?: unknown;
+        }
       | undefined;
   if (workspace) {
     for (let dir = root; inside(workspace, dir); dir = dirname(dir)) {
@@ -66,6 +72,7 @@ export async function loadProject(
     throw new Error(
       'Invalid langlab.json: expected schemaVersion 1, name and entry.',
     );
+  const application = validateApplicationSettings(manifest?.application);
   const projectId = pathToFileURL(manifest ? root : file).href;
   const files: ProjectFile[] = [];
   let total = 0,
@@ -145,6 +152,7 @@ export async function loadProject(
       name: manifest?.name ?? basename(file, '.lang'),
       entry: manifest?.entry ?? basename(file),
       schemaVersion: 1,
+      application,
       createdAt: 0,
       updatedAt: 0,
     },

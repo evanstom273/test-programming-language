@@ -1,6 +1,7 @@
 import { Inflate, strToU8, zipSync } from 'fflate';
 import { canonicalPath, LIMITS, VirtualFileSystem } from './vfs';
 import type { ProjectFile, ProjectSnapshot } from './model';
+import { validateApplicationSettings } from './application';
 
 const decoder = new TextDecoder('utf-8', { fatal: true });
 const crcTable = Array.from({ length: 256 }, (_, n) => {
@@ -134,6 +135,7 @@ export function exportProject(snapshot: ProjectSnapshot): Uint8Array {
         schemaVersion: 1,
         name: snapshot.project.name,
         entry: snapshot.project.entry,
+        application: snapshot.project.application,
         files: snapshot.files.map((f) => ({
           path: f.path,
           kind: f.kind,
@@ -168,6 +170,7 @@ export function importProject(bytes: Uint8Array): ProjectSnapshot {
   )
     throw new Error('Unsupported or invalid project manifest.');
   canonicalPath(m.entry);
+  const application = validateApplicationSettings(m.application);
   const id = crypto.randomUUID();
   const now = Date.now();
   const files: ProjectFile[] = [];
@@ -218,6 +221,7 @@ export function importProject(bytes: Uint8Array): ProjectSnapshot {
       name: m.name,
       entry: m.entry,
       schemaVersion: 1,
+      application,
       createdAt: now,
       updatedAt: now,
     },

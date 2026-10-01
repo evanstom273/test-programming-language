@@ -1,9 +1,26 @@
 import type { ExportOverrides } from '../language/ast';
+export interface ApplicationSettings {
+  name?: string;
+  identifier?: string;
+  version?: string;
+  icon?: string;
+  window?: {
+    width?: number;
+    height?: number;
+    fullscreen?: boolean;
+    resizable?: boolean;
+  };
+  saveData?: {
+    location?: 'appData' | 'documents' | 'portable';
+  };
+}
+
 export interface Project {
   id: string;
   name: string;
   entry: string;
   schemaVersion: 1;
+  application?: ApplicationSettings;
   createdAt: number;
   updatedAt: number;
 }

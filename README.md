@@ -4,7 +4,7 @@ A browser-based IDE and interpreter for an English-like, executable-pseudocode p
 
 ## VS Code and general coding
 
-Install the locally built extension with `npm run vscode:package` and **Install from VSIX** in VS Code. It adds project-aware diagnostics, completion, hover, definition/references, interactive App Preview, Inspector configuration and standalone HTML export. See [VS Code setup](docs/vscode.md).
+Install the locally built extension with `npm run vscode:package` and **Install from VSIX** in VS Code. It adds project-aware diagnostics, completion, hover, definition/references, interactive App Preview, Inspector configuration, standalone HTML export, Windows `.exe` builds and Android `.apk` builds. See [VS Code setup](docs/vscode.md) and [native builds](docs/native-builds.md).
 
 The language also supports `#` and `/* */` comments, `break.`/`continue.`, stronger typed-return checks and common text/math helpers. See [coding improvements](docs/coding-improvements.md).
 
