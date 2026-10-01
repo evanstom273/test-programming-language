@@ -30,7 +30,7 @@ export default function App() {
   const program = useProgramSession(view.snapshot);
   const error = program.error;
   const exportAnalysis = useProjectAnalysis(view.snapshot);
-  const run = () => { setConsoleOpen(true); program.run(); };
+  const run = () => { if (view.busy || program.pendingInputs > 0) return; setConsoleOpen(true); program.run(); };
   const updateInput = (name: string, value: ExportValue) => {
     const field = program.snapshot?.inputs.find(f => f.name === name);
     if (!field?.fileId) return;
@@ -111,7 +111,7 @@ export default function App() {
             <SlidersHorizontal size={17} />
           </button>
 
-          <button type="button" onClick={run} disabled={!view.project || view.busy} className="flex h-10 items-center gap-2 rounded-lg bg-[#238636] px-3.5 text-sm font-semibold text-white hover:bg-[#2ea043]">
+          <button type="button" onClick={run} disabled={!view.project || view.busy || program.pendingInputs > 0} className="flex h-10 items-center gap-2 rounded-lg bg-[#238636] px-3.5 text-sm font-semibold text-white hover:bg-[#2ea043]">
             <Play size={16} fill="currentColor" /> Run
           </button>
           <button type="button" onClick={program.stop} disabled={program.status === 'idle'} className="min-h-11 rounded border border-[#30363d] px-2 text-sm disabled:opacity-40">Stop</button>

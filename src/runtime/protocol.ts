@@ -8,9 +8,13 @@ export type RuntimeCommand =
   | { type: 'input'; name: string; value: ExportValue }
   | { type: 'button'; id: string }
   | { type: 'clear' };
-export type WorkerRequest = RuntimeCommand & { epoch: number; requestId: number };
+export type WorkerRequest = RuntimeCommand & {
+  epoch: number;
+  requestId: number;
+};
 export interface WorkerResponse {
-  epoch: number; requestId: number;
+  epoch: number;
+  requestId: number;
   snapshot?: ProgramSnapshot;
   fields?: ProgramField[];
   diagnostics: Diagnostic[];

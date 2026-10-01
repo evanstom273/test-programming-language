@@ -1,3 +1,4 @@
+import { BUILTIN_FUNCTIONS } from './builtins';
 import { LanguageError } from './lexer';
 import { parseSource } from './parser';
 import { compileSource, type Program, type ModuleDefinition } from './analysis';
@@ -72,7 +73,7 @@ interface ReturnSignal {
 
 const MAX_STEPS = 100_000;
 
-const BUILTIN_FUNCTIONS = new Set(['randomInteger']);
+
 
 export function validateSource(source: string): void {
   parseSource(source);
