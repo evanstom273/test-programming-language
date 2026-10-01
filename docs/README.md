@@ -6,6 +6,7 @@ These documents describe the behavior on main at the time they were written. Lan
 
 ## Start here
 
+- [Scenes and rich application UI](scenes-ui.md) — multi-screen apps/games, scene transitions, status cards and progress bars.
 - [VS Code](vscode.md) — installable desktop extension, LSP tooling and App Preview.
 - [General coding improvements](coding-improvements.md) — comments, loop control, typed returns and standard helpers.
 - [Standalone HTML applications](standalone-html.md) — export one self-contained app file, without the IDE.

@@ -52,6 +52,7 @@ describe('temporary source projects', () => {
   });
   it.each([
     ['print("input button on start").', false],
+    ['scene One. heading "Hello". end scene.', true],
     ['export integer: health = 1. print(health).', false],
     ['input integer: health = 1.', true],
     ['button "Go", do. print(1). end button.', true],

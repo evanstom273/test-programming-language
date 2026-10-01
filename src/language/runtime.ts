@@ -25,6 +25,7 @@ import {
 import {
   isLanguageValue,
   type ProgramField,
+  type ProgramSceneItem,
   type ProgramSnapshot,
   type ProgramOptions,
 } from './program';
@@ -127,6 +128,7 @@ interface RuntimeContext {
   overrides: ExportOverrides;
   inputOverrides: ExportOverrides;
   inputs: Map<string, ProgramField & Located>;
+  navigate: (name: string) => void;
 }
 
 type ReturnSignal =
@@ -151,13 +153,31 @@ export class RuntimeSession {
     {
       statement: Extract<Statement, { kind: 'button' }>;
       context: RuntimeContext;
+      scene?: string;
     }
   >();
+  private readonly scenes = new Map<
+    string,
+    {
+      statement: Extract<Statement, { kind: 'scene' }>;
+      context: RuntimeContext;
+    }
+  >();
+  private activeScene: {
+    statement: Extract<Statement, { kind: 'scene' }>;
+    context: RuntimeContext;
+  } | null = null;
+  private initializing = true;
+  private sceneEpoch = 0;
+  private sceneOutputStart = 0;
+  private sceneTransitions = 0;
   private readonly queue: {
     context: RuntimeContext;
     event: string;
     args: Value[];
     payloadSize: number;
+    handlers?: Statement[];
+    sceneEpoch?: number;
   }[] = [];
   private eventCount = 0;
   private queuedPayloadSize = 0;
@@ -205,23 +225,38 @@ export class RuntimeSession {
         overrides: moduleOptions.exportOverrides ?? {},
         inputOverrides: moduleOptions.inputOverrides ?? {},
         inputs: new Map(),
+        navigate: (name) => this.navigate(name),
       };
       this.contexts.set(module.id, context);
-      for (const statement of module.statements)
-        if (statement.kind === 'button') {
-          const prefix = module.id === program.entryId ? '' : module.id + ':';
-          this.buttons.set(
-            prefix +
-              'button-' +
-              [...this.buttons.values()].filter((b) => b.context === context)
-                .length,
-            { statement, context },
-          );
+      const prefix = module.id === program.entryId ? '' : module.id + ':';
+      let buttonIndex = 0;
+      for (const statement of module.statements) {
+        if (statement.kind === 'button')
+          this.buttons.set(prefix + 'button-' + buttonIndex++, {
+            statement,
+            context,
+          });
+        if (statement.kind === 'scene') {
+          this.scenes.set(statement.name, { statement, context });
+          for (const child of statement.body)
+            if (child.kind === 'button')
+              this.buttons.set(prefix + 'button-' + buttonIndex++, {
+                statement: child,
+                context,
+                scene: statement.name,
+              });
         }
+      }
     }
     for (const context of this.contexts.values())
       for (const [alias, id] of Object.entries(context.module.imports))
         context.imports.set(alias, this.contexts.get(id)!);
+    this.activeScene =
+      [...this.scenes.values()].find(
+        (scene) => scene.context.module.id === program.entryId,
+      ) ??
+      this.scenes.values().next().value ??
+      null;
     this.action(() => {
       for (const context of this.contexts.values())
         executeStatements(
@@ -230,13 +265,30 @@ export class RuntimeSession {
           context,
           true,
         );
+      for (const scene of this.scenes.values()) {
+        const inputs = scene.statement.body.filter(
+          (statement) =>
+            statement.kind === 'declare' && statement.exposure === 'input',
+        );
+        executeStatements(
+          inputs,
+          scene.context.globals,
+          scene.context,
+          true,
+          scene.statement.name,
+        );
+      }
       for (const context of this.contexts.values())
         this.enqueue(context, 'start', []);
     });
+    this.initializing = false;
+    if (this.activeScene)
+      this.action(() => this.runSceneHandlers(this.activeScene!, 'enter', []));
   }
 
   private action(work: () => void) {
     this.eventCount = 0;
+    this.sceneTransitions = 0;
     this.shared.steps = 0;
     this.shared.depth = 0;
     this.shared.deadline = Date.now() + 2000;
@@ -255,7 +307,12 @@ export class RuntimeSession {
       throw error;
     }
   }
-  private enqueue(context: RuntimeContext, event: string, args: Value[]) {
+  private enqueue(
+    context: RuntimeContext,
+    event: string,
+    args: Value[],
+    handlers?: Statement[],
+  ) {
     if (++this.eventCount > 1024)
       throw new LanguageError(
         'Event limit exceeded.',
@@ -277,13 +334,20 @@ export class RuntimeSession {
       event,
       args: structuredClone(args),
       payloadSize,
+      handlers,
+      sceneEpoch: handlers ? this.sceneEpoch : undefined,
     });
   }
   private drainEvents() {
     while (this.queue.length) {
       const event = this.queue.shift()!;
       this.queuedPayloadSize -= event.payloadSize;
-      for (const handler of event.context.module.statements) {
+      for (const handler of event.handlers ?? event.context.module.statements) {
+        if (
+          event.sceneEpoch !== undefined &&
+          event.sceneEpoch !== this.sceneEpoch
+        )
+          break;
         if (handler.kind !== 'handler' || handler.event !== event.event)
           continue;
         const env = new Environment(event.context.globals);
@@ -328,7 +392,78 @@ export class RuntimeSession {
           )
         )
           this.enqueue(context, event, args);
+      if (
+        this.activeScene?.statement.body.some(
+          (s) => s.kind === 'handler' && s.event === event,
+        )
+      )
+        this.enqueue(
+          this.activeScene.context,
+          event,
+          args,
+          this.activeScene.statement.body,
+        );
     });
+  }
+
+  private runSceneHandlers(
+    scene: {
+      statement: Extract<Statement, { kind: 'scene' }>;
+      context: RuntimeContext;
+    },
+    event: string,
+    args: Value[],
+  ) {
+    for (const handler of scene.statement.body) {
+      if (handler.kind !== 'handler' || handler.event !== event) continue;
+      const env = new Environment(scene.context.globals);
+      handler.parameters.forEach((parameter, index) => {
+        assertType(
+          parameter.typeName,
+          args[index],
+          parameter.name,
+          parameter.line,
+          parameter.column,
+          scene.context.definitions,
+        );
+        env.declare(
+          parameter.name,
+          parameter.typeName,
+          args[index],
+          parameter.line,
+          parameter.column,
+        );
+      });
+      executeStatements(handler.body, env, scene.context, true);
+    }
+  }
+
+  private navigate(name: string) {
+    const next = this.scenes.get(name);
+    if (!next)
+      throw new LanguageError(
+        'Unknown scene "' + name + '".',
+        1,
+        1,
+        this.shared.lastSpan,
+      );
+    if (this.initializing) {
+      this.activeScene = next;
+      return;
+    }
+    if (this.activeScene?.statement.name === name) return;
+    if (++this.sceneTransitions > 64)
+      throw new LanguageError(
+        'Too many scene transitions in one action.',
+        1,
+        1,
+        this.shared.lastSpan,
+      );
+    if (this.activeScene) this.runSceneHandlers(this.activeScene, 'leave', []);
+    this.activeScene = next;
+    this.sceneEpoch++;
+    this.sceneOutputStart = this.shared.output.length;
+    this.runSceneHandlers(next, 'enter', []);
   }
   private inputKey(context: RuntimeContext, name: string) {
     return context.module.id === this.program.entryId
@@ -338,8 +473,10 @@ export class RuntimeSession {
   snapshot(): ProgramSnapshot {
     const inputValues: ExportOverrides = Object.create(null);
     const inputs: ProgramField[] = [];
+    const activeSceneName = this.activeScene?.statement.name;
     for (const context of this.contexts.values())
       for (const [name, field] of context.inputs) {
+        if (field.scene && field.scene !== activeSceneName) continue;
         const key = this.inputKey(context, name);
         inputValues[key] = context.globals.get(name)!.value as ExportValue;
         inputs.push({
@@ -350,34 +487,123 @@ export class RuntimeSession {
           path: context.module.path,
         });
       }
+    const visibleButtons = Array.from(this.buttons, ([id, button]) => ({
+      id,
+      button,
+    })).filter(
+      ({ button }) => !button.scene || button.scene === activeSceneName,
+    );
+    const scene = this.activeScene
+      ? {
+          name: this.activeScene.statement.name,
+          fileId: this.activeScene.context.module.id,
+          path: this.activeScene.context.module.path,
+          items: this.sceneItems(this.activeScene),
+        }
+      : undefined;
     return structuredClone({
       inputs,
       inputValues,
-      buttons: Array.from(this.buttons, ([id, b]) => ({
+      buttons: visibleButtons.map(({ id, button }) => ({
         id,
-        label: b.statement.label,
+        label: button.statement.label,
+        scene: button.scene,
       })),
-      output: this.shared.output,
+      output: activeSceneName
+        ? this.shared.output.slice(this.sceneOutputStart)
+        : this.shared.output,
+      scene,
       events: [
         ...new Set(
-          this.program.modules.flatMap((m) =>
-            m.statements
+          [
+            ...this.program.modules.flatMap((m) =>
+              m.statements
+                .filter(
+                  (s) =>
+                    s.kind === 'handler' &&
+                    Object.hasOwn(HOST_EVENTS, s.event) &&
+                    s.event !== 'start',
+                )
+                .map((s) => (s.kind === 'handler' ? s.event : '')),
+            ),
+            ...(this.activeScene?.statement.body
               .filter(
                 (s) =>
                   s.kind === 'handler' &&
                   Object.hasOwn(HOST_EVENTS, s.event) &&
                   s.event !== 'start',
               )
-              .map((s) => (s.kind === 'handler' ? s.event : '')),
-          ),
+              .map((s) => (s.kind === 'handler' ? s.event : '')) ?? []),
+          ].flat(),
         ),
       ],
     });
   }
+
+  private sceneItems(scene: {
+    statement: Extract<Statement, { kind: 'scene' }>;
+    context: RuntimeContext;
+  }): ProgramSceneItem[] {
+    const items: ProgramSceneItem[] = [];
+    for (const statement of scene.statement.body) {
+      if (statement.kind === 'heading') {
+        items.push({ kind: 'heading', text: statement.text });
+        continue;
+      }
+      if (statement.kind === 'paragraph') {
+        items.push({ kind: 'paragraph', text: statement.text });
+        continue;
+      }
+      if (statement.kind === 'stat') {
+        items.push({
+          kind: 'stat',
+          label: statement.label,
+          value: format(
+            readUiValue(statement.value, scene.context.globals, scene.context),
+          ),
+        });
+        continue;
+      }
+      if (statement.kind === 'progress') {
+        const value = readUiValue(
+          statement.value,
+          scene.context.globals,
+          scene.context,
+        );
+        const maximum = readUiValue(
+          statement.maximum,
+          scene.context.globals,
+          scene.context,
+        );
+        if (typeof value !== 'number' || typeof maximum !== 'number')
+          throw new LanguageError(
+            'Progress values must be numeric.',
+            statement.line,
+            statement.column,
+            statement.span,
+          );
+        items.push({
+          kind: 'progress',
+          label: statement.label,
+          value,
+          maximum,
+        });
+      }
+    }
+    return items;
+  }
+
   setInput(key: string, value: unknown): void {
     for (const context of this.contexts.values())
       for (const [name, field] of context.inputs) {
         if (this.inputKey(context, name) !== key) continue;
+        if (field.scene && field.scene !== this.activeScene?.statement.name)
+          throw new LanguageError(
+            'Input is not part of the active scene.',
+            field.line,
+            field.column,
+            field.span,
+          );
         if (!isLanguageValue(value))
           throw new LanguageError(
             'Inputs must contain finite, bounded language values.',
@@ -407,16 +633,25 @@ export class RuntimeSession {
   pressButton(id: string): void {
     const button = this.buttons.get(id);
     if (!button) throw new LanguageError('Unknown button "' + id + '".', 1, 1);
+    if (button.scene && button.scene !== this.activeScene?.statement.name)
+      throw new LanguageError(
+        'Button is not part of the active scene.',
+        1,
+        1,
+        button.statement.span,
+      );
     this.action(() =>
       executeStatements(
         button.statement.body,
         new Environment(button.context.globals),
         button.context,
         true,
+        button.scene,
       ),
     );
   }
   clearOutput(): void {
+    this.sceneOutputStart = 0;
     this.shared.output = [];
     this.shared.outputBytes = 0;
     this.shared.truncated = false;
@@ -495,6 +730,7 @@ function executeStatements(
   env: Environment,
   context: RuntimeContext,
   topLevel = false,
+  sceneName?: string,
 ): ReturnSignal | null {
   for (const statement of statements) {
     context.shared.lastSpan = statement.span;
@@ -502,6 +738,11 @@ function executeStatements(
 
     if (
       statement.kind === 'record' ||
+      statement.kind === 'scene' ||
+      statement.kind === 'heading' ||
+      statement.kind === 'paragraph' ||
+      statement.kind === 'stat' ||
+      statement.kind === 'progress' ||
       statement.kind === 'signal' ||
       statement.kind === 'handler' ||
       statement.kind === 'import' ||
@@ -543,6 +784,7 @@ function executeStatements(
           line: statement.line,
           column: statement.column,
           span: statement.span,
+          scene: sceneName,
         });
       }
       const overrides =
@@ -577,6 +819,11 @@ function executeStatements(
         statement.column,
         statement.constant,
       );
+      continue;
+    }
+
+    if (statement.kind === 'goScene') {
+      context.navigate(statement.name);
       continue;
     }
 
@@ -1442,6 +1689,155 @@ function cloneExportValue(
   if (value === null)
     throw new LanguageError('Exported values cannot be empty.', line, column);
   return structuredClone(value);
+}
+
+function readUiValue(
+  expression: Expression,
+  env: Environment,
+  context: RuntimeContext,
+): Value {
+  if (expression.kind === 'literal') return structuredClone(expression.value);
+  if (expression.kind === 'identifier') {
+    const variable = env.get(expression.name);
+    if (variable) return structuredClone(variable.value);
+    if (context.enumValues.has(expression.name)) return expression.name;
+    throw new LanguageError(
+      'Unknown value "' + expression.name + '".',
+      expression.line,
+      expression.column,
+      expression.span,
+    );
+  }
+  if (expression.kind === 'array')
+    return expression.values.map((item) => readUiValue(item, env, context));
+  if (expression.kind === 'object')
+    return Object.fromEntries(
+      expression.entries.map((entry) => [
+        entry.key,
+        readUiValue(entry.value, env, context),
+      ]),
+    );
+  if (expression.kind === 'member')
+    return structuredClone(
+      readMember(
+        readUiValue(expression.target, env, context),
+        expression.name,
+        expression,
+      ),
+    );
+  if (expression.kind === 'index') {
+    const target = readUiValue(expression.target, env, context);
+    const index = readUiValue(expression.index, env, context);
+    if (typeof index !== 'string' && typeof index !== 'number')
+      throw new LanguageError(
+        'Index must be text or integer.',
+        expression.line,
+        expression.column,
+        expression.span,
+      );
+    return structuredClone(readMember(target, index, expression));
+  }
+  if (expression.kind === 'call')
+    throw new LanguageError(
+      'Scene display expressions cannot call functions.',
+      expression.line,
+      expression.column,
+      expression.span,
+    );
+  if (expression.kind === 'unary') {
+    const value = readUiValue(expression.value, env, context);
+    if (expression.operator === 'not')
+      return !asBoolean(value, expression.line, expression.column);
+    if (typeof value !== 'number')
+      throw new LanguageError(
+        'Unary minus expects a number.',
+        expression.line,
+        expression.column,
+        expression.span,
+      );
+    return -value;
+  }
+  if (expression.operator === 'and') {
+    const left = asBoolean(
+      readUiValue(expression.left, env, context),
+      expression.left.line,
+      expression.left.column,
+    );
+    return (
+      left &&
+      asBoolean(
+        readUiValue(expression.right, env, context),
+        expression.right.line,
+        expression.right.column,
+      )
+    );
+  }
+  if (expression.operator === 'or') {
+    const left = asBoolean(
+      readUiValue(expression.left, env, context),
+      expression.left.line,
+      expression.left.column,
+    );
+    return (
+      left ||
+      asBoolean(
+        readUiValue(expression.right, env, context),
+        expression.right.line,
+        expression.right.column,
+      )
+    );
+  }
+  const left = readUiValue(expression.left, env, context);
+  const right = readUiValue(expression.right, env, context);
+  if (expression.operator === 'plus') {
+    if (typeof left === 'string' || typeof right === 'string')
+      return format(left) + format(right);
+    return numberOperation(left, right, (a, b) => a + b, 'plus', expression);
+  }
+  if (expression.operator === 'minus')
+    return numberOperation(left, right, (a, b) => a - b, 'minus', expression);
+  if (expression.operator === 'times')
+    return numberOperation(left, right, (a, b) => a * b, 'times', expression);
+  if (expression.operator === 'divided by') {
+    if (right === 0)
+      throw new LanguageError(
+        'Cannot divide by zero.',
+        expression.line,
+        expression.column,
+        expression.span,
+      );
+    return numberOperation(
+      left,
+      right,
+      (a, b) => a / b,
+      'divided by',
+      expression,
+    );
+  }
+  if (expression.operator === 'remainder')
+    return numberOperation(
+      left,
+      right,
+      (a, b) => a % b,
+      'remainder',
+      expression,
+    );
+  if (expression.operator === 'is') return valuesEqual(left, right);
+  if (expression.operator === 'is not') return !valuesEqual(left, right);
+  if (expression.operator === 'less than')
+    return compareNumbers(left, right, (a, b) => a < b, expression);
+  if (expression.operator === 'less than or equal to')
+    return compareNumbers(left, right, (a, b) => a <= b, expression);
+  if (expression.operator === 'greater than')
+    return compareNumbers(left, right, (a, b) => a > b, expression);
+  if (expression.operator === 'greater than or equal to')
+    return compareNumbers(left, right, (a, b) => a >= b, expression);
+  throw new LanguageError(
+    'Unknown operation "' + expression.operator + '".',
+    expression.line,
+    expression.column,
+    expression.span,
+  );
 }
 
 function format(value: Value): string {

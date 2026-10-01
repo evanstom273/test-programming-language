@@ -47,6 +47,17 @@ interface IfBranch {
 export type Statement = Located &
   (
     | { kind: 'import'; path: string; alias: string }
+    | { kind: 'scene'; name: string; body: Statement[] }
+    | { kind: 'goScene'; name: string }
+    | { kind: 'heading'; text: string }
+    | { kind: 'paragraph'; text: string }
+    | { kind: 'stat'; label: string; value: Expression }
+    | {
+        kind: 'progress';
+        label: string;
+        value: Expression;
+        maximum: Expression;
+      }
     | { kind: 'record'; name: string; fields: Parameter[] }
     | { kind: 'signal'; name: string; parameters: Parameter[] }
     | {

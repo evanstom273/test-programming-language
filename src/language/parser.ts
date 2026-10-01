@@ -52,6 +52,7 @@ export function parseSourcePrefix(source: string, fileId: string): Statement[] {
 class Parser {
   private current = 0;
   private blockDepth = 0;
+  private sceneDepth = 0;
 
   constructor(private tokens: Token[]) {}
 
@@ -146,6 +147,43 @@ class Parser {
       if (declaration.kind === 'declare') declaration.constant = true;
       return declaration;
     }
+    if (this.matchKeyword('scene')) {
+      this.requireTopLevel('scene');
+      const start = this.previous();
+      const name = this.consume(TokenType.Identifier, 'Expected scene name.');
+      this.consume(TokenType.Period, 'Expected period after scene name.');
+      this.sceneDepth += 1;
+      const body = this.blockUntil(() => this.isEndSequence('scene'));
+      for (const child of body) {
+        if (
+          ![
+            'declare',
+            'button',
+            'handler',
+            'heading',
+            'paragraph',
+            'stat',
+            'progress',
+          ].includes(child.kind)
+        )
+          throw new LanguageError(
+            'Scene bodies contain controls, display statements and handlers only. Put executable statements inside on enter or a button.',
+            child.line,
+            child.column,
+            child.span,
+          );
+      }
+      this.sceneDepth -= 1;
+      this.consumeEndSequence('scene');
+      return {
+        kind: 'scene',
+        name: name.value,
+        body,
+        line: start.line,
+        column: start.column,
+        span: this.span(start),
+      };
+    }
     if (this.matchKeyword('record')) {
       this.requireTopLevel('record');
       const start = this.previous();
@@ -181,7 +219,7 @@ class Parser {
       };
     }
     if (this.matchKeyword('on')) {
-      this.requireTopLevel('on');
+      this.requireTopLevelOrScene('on');
       const start = this.previous();
       const event = this.consume(
         TokenType.Identifier,
@@ -253,6 +291,95 @@ class Parser {
       if (fn.kind === 'function') fn.public = true;
       return fn;
     }
+    if (this.matchKeyword('go')) {
+      const start = this.previous();
+      this.consumeKeyword('to', 'Expected to after go.');
+      const name = this.consume(
+        TokenType.Identifier,
+        'Expected scene name after go to.',
+      );
+      this.consume(TokenType.Period, 'Expected period after scene transition.');
+      return {
+        kind: 'goScene',
+        name: name.value,
+        line: start.line,
+        column: start.column,
+        span: this.span(start),
+      };
+    }
+    if (this.matchKeyword('heading')) {
+      this.requireSceneRoot('heading');
+      const start = this.previous();
+      const text = this.consume(
+        TokenType.String,
+        'Expected quoted heading text.',
+      );
+      this.consume(TokenType.Period, 'Expected period after heading.');
+      return {
+        kind: 'heading',
+        text: text.value,
+        line: start.line,
+        column: start.column,
+        span: this.span(start),
+      };
+    }
+    if (this.matchKeyword('paragraph')) {
+      this.requireSceneRoot('paragraph');
+      const start = this.previous();
+      const text = this.consume(
+        TokenType.String,
+        'Expected quoted paragraph text.',
+      );
+      this.consume(TokenType.Period, 'Expected period after paragraph.');
+      return {
+        kind: 'paragraph',
+        text: text.value,
+        line: start.line,
+        column: start.column,
+        span: this.span(start),
+      };
+    }
+    if (this.matchKeyword('stat')) {
+      this.requireSceneRoot('stat');
+      const start = this.previous();
+      const label = this.consume(
+        TokenType.String,
+        'Expected quoted stat label.',
+      );
+      this.consume(TokenType.Comma, 'Expected comma after stat label.');
+      const value = this.expression();
+      this.consume(TokenType.Period, 'Expected period after stat.');
+      return {
+        kind: 'stat',
+        label: label.value,
+        value,
+        line: start.line,
+        column: start.column,
+        span: this.span(start),
+      };
+    }
+    if (this.matchKeyword('progress')) {
+      this.requireSceneRoot('progress');
+      const start = this.previous();
+      const label = this.consume(
+        TokenType.String,
+        'Expected quoted progress label.',
+      );
+      this.consume(TokenType.Comma, 'Expected comma after progress label.');
+      const value = this.expression();
+      this.consume(TokenType.Comma, 'Expected comma before progress maximum.');
+      const maximum = this.expression();
+      this.consume(TokenType.Period, 'Expected period after progress.');
+      return {
+        kind: 'progress',
+        label: label.value,
+        value,
+        maximum,
+        line: start.line,
+        column: start.column,
+        span: this.span(start),
+      };
+    }
     if (this.matchKeyword('enum')) return this.enumStatement();
     if (this.matchKeyword('function')) return this.functionStatement();
     if (this.matchKeyword('if')) return this.ifStatement();
@@ -270,11 +397,11 @@ class Parser {
       };
     }
     if (this.matchKeyword('button')) {
-      this.requireTopLevel('button');
+      this.requireTopLevelOrScene('button');
       return this.buttonStatement();
     }
     if (this.matchKeyword('input')) {
-      this.requireTopLevel('input');
+      this.requireTopLevelOrScene('input');
       return this.declaration('input');
     }
     if (this.matchKeyword('export')) return this.declaration('export');
@@ -373,6 +500,35 @@ class Parser {
     }
   }
 
+  private inSceneRoot() {
+    return this.sceneDepth > 0 && this.blockDepth === this.sceneDepth;
+  }
+
+  private requireTopLevelOrScene(keyword: string) {
+    if (this.blockDepth > 0 && !this.inSceneRoot()) {
+      const token = this.previous();
+      throw new LanguageError(
+        keyword +
+          ' declarations must be at the top level or directly inside a scene.',
+        token.line,
+        token.column,
+        token.span,
+      );
+    }
+  }
+
+  private requireSceneRoot(keyword: string) {
+    if (!this.inSceneRoot()) {
+      const token = this.previous();
+      throw new LanguageError(
+        keyword + ' is only valid directly inside a scene.',
+        token.line,
+        token.column,
+        token.span,
+      );
+    }
+  }
+
   private buttonStatement(): Statement {
     const start = this.previous();
     const label = this.consume(
@@ -447,6 +603,14 @@ class Parser {
 
   private declaration(exposure: 'export' | 'input' | null): Statement {
     const start = exposure ? this.previous() : this.peek();
+    if (this.inSceneRoot() && exposure !== 'input') {
+      throw new LanguageError(
+        'Scenes may declare input controls only. Keep persistent state at module top level.',
+        start.line,
+        start.column,
+        start.span,
+      );
+    }
     const type = this.typeName('Expected a type name.');
     this.consume(
       TokenType.Colon,

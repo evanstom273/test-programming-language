@@ -37,7 +37,7 @@
     },
     {
       "name": "keyword.control.langlab",
-      "match": "(?i)\\b(?:resource|constant|record|signal|emit|on|returns|float|dictionary|vector2|vector3|color|import|as|public|integer|text|array|boolean|print|export|input|button|enum|function|return|break|continue|if|elif|else|end|do|while|for|each|in|from|to|step|range|plus|minus|times|divided|by|remainder|is|equal|not|less|than|greater|or|and|true|false)\\b"
+      "match": "(?i)\\b(?:resource|constant|record|scene|go|heading|paragraph|stat|progress|signal|emit|on|returns|float|dictionary|vector2|vector3|color|import|as|public|integer|text|array|boolean|print|export|input|button|enum|function|return|break|continue|if|elif|else|end|do|while|for|each|in|from|to|step|range|plus|minus|times|divided|by|remainder|is|equal|not|less|than|greater|or|and|true|false)\\b"
     },
     {
       "name": "keyword.operator.langlab",

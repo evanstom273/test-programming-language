@@ -110,7 +110,7 @@ async function main() {
   }
   if (response.capabilities?.interactive) {
     console.error(
-      'This program uses inputs, buttons or lifecycle events. It was not executed in the terminal.\nUse npm run lang:open -- "' +
+      'This program uses scenes, inputs, buttons or lifecycle events. It was not executed in the terminal.\nUse npm run lang:open -- "' +
         file.replaceAll('"', '\\"') +
         '" or choose Open / Run .lang File in Language Lab.',
     );

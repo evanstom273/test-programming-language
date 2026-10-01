@@ -178,3 +178,19 @@ Unless the user explicitly says otherwise:
 - run appropriate checks;
 - open/update a PR;
 - do not merge it yourself.
+
+## Scenes and application UI
+
+Scenes are first-class and preserve RuntimeSession state:
+
+~~~text
+scene CharacterCreator.
+    heading "Create Character".
+    input text: name = "Lyra".
+    button "Continue", do.
+        go to Arena.
+    end button.
+end scene.
+~~~
+
+Scene-local presentation statements include `heading`, `paragraph`, `stat`, and `progress`. Scene inputs/buttons are only exposed while that scene is active. Use `on enter` and `on leave` for transition lifecycle logic. Persistent internal state belongs at module top level.

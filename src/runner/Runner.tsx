@@ -110,7 +110,7 @@ export default function Runner({
   }
   return (
     <main className="safe-top safe-bottom h-full overflow-y-auto overflow-x-hidden bg-[#0b0f14] p-4 text-[#c9d1d9] sm:p-6">
-      <div className="mx-auto max-w-4xl space-y-5">
+      <div className="mx-auto max-w-5xl space-y-5">
         <header className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
             <h1 className="text-lg font-semibold text-[#f0f6fc]">
@@ -288,10 +288,7 @@ export default function Runner({
             </FieldGroups>
           </details>
         )}
-        <section
-          aria-label="Running application"
-          className="min-w-0 rounded-lg border border-[#30363d] p-4"
-        >
+        <section aria-label="Running application" className="min-w-0">
           <ProgramOutput
             key={(project?.project.id ?? '') + ':' + program.generation}
             snapshot={program.snapshot}

@@ -55,6 +55,8 @@ describe('CLI using the shared isolated language core', () => {
     expect(result.stdout.trim()).toBe('2.5 1 #ff0000');
   });
   it.each([
+    'scene One. heading "Hello". end scene.',
+    'scene One. on enter, do. print(1). end on. end scene.',
     'input integer: n = 1.',
     'button "Go", do. print(1). end button.',
     'on start, do. print(1). end on.',
