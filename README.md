@@ -221,3 +221,23 @@ npm run test:e2e             # desktop and mobile browser flows
 
 For an existing system Chromium, set
 `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/path/to/chromium` when running `test:e2e`.
+
+### PWA installation checks
+
+`npm run build` validates all shipped PNG icons before bundling. This fully decodes
+image data and checks PNG checksums: `file`, image dimensions, and even Chromium's
+`Image.decode()` can accept files that stricter image decoders reject.
+
+Run `npm run test:pwa` after installing Playwright Chromium (or setting
+`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`). It builds and serves the production GitHub
+Pages subpath, checks manifest URLs and icon decoding, verifies Chromium's
+installation eligibility and service-worker control, then restarts the browser
+and opens the PWA start URL offline. CI runs this check too. It does not emulate
+Android's WebAPK packaging service or guarantee installation on a physical phone.
+
+On Android, a Chrome-branded home-screen shortcut is not proof of a full PWA
+installation. If installation falls back to a shortcut, verify the deployed
+manifest/icons as well as the phone's Chrome and installation capabilities.
+Avoid clearing site data while troubleshooting: Language Lab files and overrides
+are stored in IndexedDB. Development mode intentionally disables the PWA; use a
+production build to test installation and offline behavior.
