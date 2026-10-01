@@ -39,8 +39,9 @@ export function useWorkspace() {
         if (cancelled) return;
         await refresh();
         if (cancelled) return;
-        setProjectId(first?.projectId ?? null);
-        setActiveId(first?.id ?? null);
+        const requested = new URLSearchParams(location.search).get('project');
+        setProjectId(requested ?? first?.projectId ?? null);
+        setActiveId(requested ? null : first?.id ?? null);
       })
       .catch((e) => setStorageError(errorMessage(e)));
     return () => {

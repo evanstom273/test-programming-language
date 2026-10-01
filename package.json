@@ -11,7 +11,11 @@
     "test:e2e": "playwright test",
     "check:pwa-icons": "node scripts/check-pwa-icons.mjs",
     "prebuild": "npm run check:pwa-icons",
-    "test:pwa": "playwright test --config playwright.pwa.config.ts"
+    "test:pwa": "playwright test --config playwright.pwa.config.ts",
+    "lang:check": "node scripts/lang.mjs check",
+    "lang:run": "node scripts/lang.mjs run",
+    "lang:open": "node scripts/lang.mjs open",
+    "lang:build": "node scripts/lang.mjs --build"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.18.6",

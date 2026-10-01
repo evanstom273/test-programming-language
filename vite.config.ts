@@ -33,6 +33,8 @@ export default defineConfig({
         orientation: 'any',
         start_url: startUrl,
         scope: base,
+        file_handlers: [{ action: `${base}?runner=1`, accept: { 'text/x-language-lab': ['.lang'] } }],
+        shortcuts: [{ name: 'Run a .lang file', short_name: 'Run File', url: `${base}?runner=1` }],
         icons: [
           { src: `${base}pwa-192x192.png`, sizes: '192x192', type: 'image/png', purpose: 'any' },
           { src: `${base}pwa-512x512.png`, sizes: '512x512', type: 'image/png', purpose: 'any' },
