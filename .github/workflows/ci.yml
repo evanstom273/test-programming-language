@@ -49,3 +49,14 @@ jobs:
         with:
           name: language-lab-vsix
           path: language-lab.vsix
+
+  windows-native-launcher:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --no-audit --no-fund
+      - name: Test native launcher on Windows
+        run: npm test -- --run tests/native-process.test.ts tests/native-build.test.ts

@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { commandExists, npxCommand, type NativeCommand } from './nativeProcess';
 import {
   copyFile,
   mkdir,
@@ -29,35 +30,29 @@ const TAURI_CLI = '@tauri-apps/cli@2.12.0';
 
 export function nativeFilename(project: ProjectSnapshot, target: NativeTarget) {
   const definition = nativeBuildDefinition(project, target);
-  const safe = definition.application.name
-    .replace(/[<>:"/\\|?*\x00-\x1f\x7f]/g, '-')
-    .replace(/[. ]+$/g, '')
-    .slice(0, 100) || 'Application';
+  const safe =
+    definition.application.name
+      .replace(/[<>:"/\\|?*\x00-\x1f\x7f]/g, '-')
+      .replace(/[. ]+$/g, '')
+      .slice(0, 100) || 'Application';
   return safe + (target === 'windows' ? '.exe' : '.apk');
 }
 
-async function commandExists(command: string) {
-  return new Promise<boolean>((resolvePromise) => {
-    const child = spawn(command, ['--version'], {
-      shell: false,
-      windowsHide: true,
-      stdio: 'ignore',
-    });
-    child.once('error', () => resolvePromise(false));
-    child.once('exit', (code) => resolvePromise(code === 0));
-  });
-}
-
 function run(
-  command: string,
+  command: NativeCommand,
   args: string[],
   cwd: string,
   output: OutputChannel,
 ) {
   output.appendLine('');
-  output.appendLine('> ' + command + ' ' + args.join(' '));
+  output.appendLine(
+    '> ' +
+      [command.file, ...command.args, ...args]
+        .map((arg) => JSON.stringify(arg))
+        .join(' '),
+  );
   return new Promise<void>((resolvePromise, reject) => {
-    const child = spawn(command, args, {
+    const child = spawn(command.file, [...command.args, ...args], {
       cwd,
       env: {
         ...process.env,
@@ -69,10 +64,15 @@ function run(
     });
     child.stdout.on('data', (data) => output.append(String(data)));
     child.stderr.on('data', (data) => output.append(String(data)));
-    child.once('error', reject);
-    child.once('exit', (code) => {
+    child.once('error', (error) =>
+      reject(
+        new Error('Unable to launch ' + command.file + ': ' + error.message),
+      ),
+    );
+    child.once('close', (code) => {
       if (code === 0) resolvePromise();
-      else reject(new Error('Build command failed with exit code ' + code + '.'));
+      else
+        reject(new Error('Build command failed with exit code ' + code + '.'));
     });
   });
 }
@@ -165,12 +165,12 @@ export async function buildNativeApplication(
     throw new Error(
       'Windows .exe builds currently run on Windows. Open the project in desktop VS Code on Windows and run the command again.',
     );
-  if (!(await commandExists('cargo')))
+  if (!(await commandExists({ file: 'cargo', args: [] })))
     throw new Error(
       'Rust/Cargo is required to build native applications. Install the Rust toolchain, then restart VS Code.',
     );
 
-  const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+  const npx = await npxCommand();
   if (!(await commandExists(npx)))
     throw new Error(
       'Node.js/npm is required to launch the Tauri builder. Install Node.js, then restart VS Code.',
@@ -181,7 +181,14 @@ export async function buildNativeApplication(
   try {
     await run(
       npx,
-      ['--yes', TAURI_CLI, 'icon', workspace.iconPath, '--output', 'src-tauri/icons'],
+      [
+        '--yes',
+        TAURI_CLI,
+        'icon',
+        workspace.iconPath,
+        '--output',
+        'src-tauri/icons',
+      ],
       workspace.root,
       output,
     );
