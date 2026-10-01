@@ -288,3 +288,7 @@ manifest/icons as well as the phone's Chrome and installation capabilities.
 Avoid clearing site data while troubleshooting: Language Lab files and overrides
 are stored in IndexedDB. Development mode intentionally disables the PWA; use a
 production build to test installation and offline behavior.
+
+### Play a complete example
+
+[Emberfall — The Last Beacon](examples/emberfall/README.md) is a scene-based dungeon RPG with character creation, tactical combat, camps and a boss. Build an offline standalone HTML game and editable project ZIP with `npm run example:emberfall`.

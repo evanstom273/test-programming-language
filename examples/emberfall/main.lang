@@ -1,0 +1,330 @@
+import "./lib/rules.lang" as rules.
+
+# Author configuration: appears in the Inspector, not as player inputs.
+@group("Expedition rules")
+@range(1, 3, 1)
+@help("Enemy damage multiplier. 1 is the intended first playthrough.")
+export integer: danger = 1.
+@group("Expedition rules")
+@range(0, 5, 1)
+export integer: startingPotions = 3.
+@group("Expedition rules")
+export text: beaconName = "The Last Beacon".
+
+enum Calling [Warden, Duelist, Arcanist].
+enum Path [MoonlitRoad, SunkenVault].
+record Hero [text: name, integer: health, integer: maximum, integer: power, integer: armor, integer: focus, integer: gold, integer: potions].
+constant integer: finalFloor = 4.
+array<text>: foes = ["Ash Rat", "Hollow Sentinel", "Cinder Witch", "The Bellkeeper"].
+array<text>: intentions = ["Quick strike", "Heavy blow", "Gathering embers"].
+Hero: hero = {"name": "Ash", "health": 40, "maximum": 40, "power": 7, "armor": 1, "focus": 0, "gold": 0, "potions": 3}.
+integer: floorNumber = 1.
+integer: enemyHealth = 1.
+integer: enemyMaximum = 1.
+integer: enemyPower = 1.
+integer: turn = 0.
+integer: intent = 0.
+integer: victories = 0.
+integer: turnsTaken = 0.
+integer: score = 0.
+integer: campVisits = 0.
+boolean: rested = false.
+boolean: risky = false.
+boolean: battleActive = false.
+text: enemyName = "".
+text: intentText = "".
+text: routeText = "".
+text: classText = "".
+text: supplies = "".
+text: news = "".
+
+signal battleWon(integer: reward).
+on battleWon(integer: reward), do.
+    hero.gold = hero.gold + reward.
+    victories = victories + 1.
+    if floorNumber is finalFloor, do.
+        score = floor(max(0, 200 + hero.health * 2 + hero.gold - turnsTaken)).
+        go to Dawn.
+    else, do.
+        rested = false.
+        go to Camp.
+    end if.
+end on.
+
+function updateIntent().
+    intent = turn remainder 3.
+    intentText = intentions[intent].
+end function.
+
+function prepareBattle().
+    risky = route is SunkenVault.
+    enemyName = foes[floorNumber - 1].
+    enemyMaximum = 12 + floorNumber * 6.
+    enemyPower = (2 + floorNumber) * danger.
+    routeText = "Moonlit road: ordinary enemies, 8 gold reward".
+    if risky, do.
+        enemyMaximum = enemyMaximum + 6.
+        enemyPower = enemyPower + 1.
+        routeText = "Sunken vault: tougher enemies, 14 gold reward".
+    end if.
+    if floorNumber is finalFloor, do.
+        enemyMaximum = enemyMaximum + 10.
+    end if.
+    enemyHealth = enemyMaximum.
+    hero.focus = 0.
+    turn = 0.
+    battleActive = true.
+    updateIntent().
+end function.
+
+function startJourney().
+    hero = {"name": rules.heroName(chosenName), "health": 40, "maximum": 40, "power": 7, "armor": 1, "focus": 0, "gold": 0, "potions": startingPotions}.
+    classText = "Warden: 48 health, 2 armor, 7 power".
+    if calling is Warden, do.
+        hero.maximum = 48.
+        hero.armor = 2.
+    elif calling is Duelist, do.
+        hero.maximum = 38.
+        hero.power = 10.
+        classText = "Duelist: 38 health, 1 armor, 10 power".
+    else, do.
+        hero.maximum = 34.
+        hero.power = 8.
+        hero.potions = hero.potions + 1.
+        classText = "Arcanist: 34 health, 1 armor, 8 power, extra potion".
+    end if.
+    hero.health = hero.maximum.
+    floorNumber = 1.
+    victories = 0.
+    turnsTaken = 0.
+    campVisits = 0.
+    score = 0.
+    rested = false.
+    battleActive = false.
+    supplies = join(["Lantern", "Iron blade", "Ember flask"], " / ").
+    news = "The bells have fallen silent. Carry an ember to " + beaconName + ".".
+    go to Crossroads.
+end function.
+
+function takeTurn(integer: action).
+    if not battleActive, do.
+        return.
+    end if.
+    if action is 3 and hero.focus is less than 2, do.
+        print("Burst needs 2 focus. Strike or Guard to build focus.").
+        return.
+    end if.
+    if action is 4 and hero.potions is 0, do.
+        print("No potions left. This did not spend your turn.").
+        return.
+    end if.
+    if action is 4 and hero.health is hero.maximum, do.
+        print("Already at full health. This did not spend your turn.").
+        return.
+    end if.
+    turnsTaken = turnsTaken + 1.
+    integer: damage = 0.
+    boolean: guarding = action is 2.
+    if action is 1, do.
+        damage = hero.power + randomInteger(0, 3).
+        hero.focus = rules.bounded(hero.focus + 1, 3).
+    elif action is 2, do.
+        hero.focus = rules.bounded(hero.focus + 1, 3).
+        print("You brace behind your lantern. Incoming damage is quartered.").
+    elif action is 3, do.
+        damage = hero.power * 2 + randomInteger(2, 5).
+        hero.focus = hero.focus - 2.
+        if calling is Arcanist, do.
+            damage = damage + 5.
+        end if.
+    else, do.
+        hero.potions = hero.potions - 1.
+        hero.health = rules.bounded(hero.health + rules.healAmount(hero.maximum), hero.maximum).
+        print("The flask restores warmth. The enemy still gets its turn!").
+    end if.
+    enemyHealth = rules.bounded(enemyHealth - damage, enemyMaximum).
+    if damage is greater than 0, do.
+        print("You deal", damage, "damage.").
+    end if.
+    if enemyHealth is 0, do.
+        battleActive = false.
+        news = "You defeated " + enemyName + ".".
+        integer: reward = 8.
+        if risky, do.
+            reward = 14.
+        end if.
+        emit battleWon(reward).
+        return.
+    end if.
+    if intent is 2, do.
+        print(enemyName, "gathers embers. You have a moment to breathe.").
+    else, do.
+        integer: incoming = enemyPower + randomInteger(0, 2).
+        if intent is 1, do.
+            incoming = incoming * 2.
+        end if.
+        incoming = rules.strike(incoming, hero.armor).
+        if guarding, do.
+            incoming = ceil(incoming / 4).
+        end if.
+        hero.health = rules.bounded(hero.health - incoming, hero.maximum).
+        print(enemyName, "deals", incoming, "damage.").
+    end if.
+    if hero.health is 0, do.
+        battleActive = false.
+        go to Ashes.
+        return.
+    end if.
+    turn = turn + 1.
+    updateIntent().
+end function.
+
+on start, do.
+    go to Title.
+end on.
+
+scene Title.
+    heading "EMBERFALL".
+    paragraph "A turn-based expedition in four encounters. Relight the last beacon, or become another name in the ash.".
+    stat "Destination", beaconName.
+    paragraph "Strike builds focus. Guard the heavy blows. Spend two focus on Burst. Drink when the enemy gathers embers.".
+    button "Begin expedition", do.
+        go to CreateHero.
+    end button.
+end scene.
+
+scene CreateHero.
+    heading "Who carries the flame?".
+    @group("Your adventurer")
+    @label("Hero name")
+    input text: chosenName = "Lyra".
+    @group("Your adventurer")
+    input Calling: calling = Warden.
+    @label("Show tactical hints")
+    input boolean: showHints = true.
+    paragraph "Warden: durable. Duelist: strong strikes. Arcanist: stronger Burst and an extra potion. Names use the first three words.".
+    button "Light the lantern", do.
+        startJourney().
+    end button.
+    button "Back to title", do.
+        go to Title.
+    end button.
+end scene.
+
+scene Crossroads.
+    heading "The road through the ash".
+    stat "Journal", news.
+    stat "Adventurer", hero.name.
+    stat "Calling", classText.
+    stat "Encounter", floorNumber.
+    progress "Health", hero.health, hero.maximum.
+    stat "Equipment", supplies.
+    input Path: route = MoonlitRoad.
+    paragraph "The Moonlit Road is safer. The Sunken Vault gives extra gold but tougher enemies. Your route can change before every encounter.".
+    button "Enter the ruins", do.
+        prepareBattle().
+        go to Battle.
+    end button.
+end scene.
+
+scene Battle.
+    heading "Keep the ember alive".
+    stat "Enemy", enemyName.
+    progress "Enemy health", enemyHealth, enemyMaximum.
+    progress "Your health", hero.health, hero.maximum.
+    progress "Focus", hero.focus, 3.
+    stat "Enemy intent", intentText.
+    stat "Potions", hero.potions.
+    stat "Route", routeText.
+    on enter, do.
+        print(upper(enemyName), "stands in your way.").
+        if showHints, do.
+            print("Read the intent before acting. Guard heavy blows; heal during Gathering embers.").
+        end if.
+    end on.
+    on leave, do.
+        # A plain persistent value, not an automatic application save.
+        supplies = "Lantern / Iron blade / Potions: " + hero.potions.
+    end on.
+    button "Strike", do.
+        takeTurn(1).
+    end button.
+    button "Guard", do.
+        takeTurn(2).
+    end button.
+    button "Burst (2 focus)", do.
+        takeTurn(3).
+    end button.
+    button "Drink potion", do.
+        takeTurn(4).
+    end button.
+end scene.
+
+scene Camp.
+    heading "A pocket of warmth".
+    stat "Journal", news.
+    progress "Health", hero.health, hero.maximum.
+    stat "Gold", hero.gold.
+    stat "Power", hero.power.
+    stat "Potions", hero.potions.
+    stat "Rest used", rested.
+    on enter, do.
+        campVisits = campVisits + 1.
+        print("Camp", campVisits, "— spend wisely. You may rest once here.").
+    end on.
+    button "Rest by the fire", do.
+        if not rested, do.
+            hero.health = rules.bounded(hero.health + 12, hero.maximum).
+            rested = true.
+            print("Recovered up to 12 health.").
+        else, do.
+            print("The fire is cooling. Only one rest per camp.").
+        end if.
+    end button.
+    button "Sharpen blade (8 gold)", do.
+        if hero.gold is greater than or equal to 8, do.
+            hero.gold = hero.gold - 8.
+            hero.power = hero.power + 2.
+            print("Power increased by 2.").
+        else, do.
+            print("You need 8 gold.").
+        end if.
+    end button.
+    button "Buy potion (5 gold)", do.
+        if hero.gold is greater than or equal to 5, do.
+            hero.gold = hero.gold - 5.
+            hero.potions = hero.potions + 1.
+            print("Potion packed.").
+        else, do.
+            print("You need 5 gold.").
+        end if.
+    end button.
+    button "Continue the journey", do.
+        floorNumber = floorNumber + 1.
+        go to Crossroads.
+    end button.
+end scene.
+
+scene Dawn.
+    heading "The beacon burns again".
+    paragraph "For the first time in a hundred nights, the valley sees the dawn. You carried the flame all the way home.".
+    stat "Keeper of the flame", hero.name.
+    stat "Score", score.
+    stat "Encounters won", victories.
+    stat "Turns taken", turnsTaken.
+    progress "Health remaining", hero.health, hero.maximum.
+    button "Another expedition", do.
+        go to CreateHero.
+    end button.
+end scene.
+
+scene Ashes.
+    heading "An ember in the dark".
+    paragraph "Your lantern goes out. Somewhere above, the bell rings once. Another traveller will take up the flame.".
+    stat "Fallen adventurer", hero.name.
+    stat "Encounters won", victories.
+    stat "Reached encounter", floorNumber.
+    button "Try again", do.
+        go to CreateHero.
+    end button.
+end scene.

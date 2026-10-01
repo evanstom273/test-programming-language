@@ -49,3 +49,10 @@ jobs:
         with:
           name: language-lab-vsix
           path: language-lab.vsix
+      - name: Build playable Emberfall example
+        run: node scripts/build-emberfall.mjs
+      - name: Upload game and editable project
+        uses: actions/upload-artifact@v4
+        with:
+          name: emberfall-game
+          path: dist/emberfall/

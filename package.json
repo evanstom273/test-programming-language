@@ -18,7 +18,8 @@
     "lang:build": "node scripts/lang.mjs --build",
     "vscode:build": "tsc -p extensions/vscode/tsconfig.json && node scripts/build-vscode.mjs",
     "vscode:package": "npm run vscode:build && cd extensions/vscode && vsce package --no-dependencies --skip-license --out ../../language-lab.vsix",
-    "test:vscode": "node scripts/test-vscode.mjs"
+    "test:vscode": "node scripts/test-vscode.mjs",
+    "example:emberfall": "npm run vscode:build && node scripts/build-emberfall.mjs"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.18.6",

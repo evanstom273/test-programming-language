@@ -1,0 +1,37 @@
+# Pure, public module functions: these do not expose Inspector configuration.
+public function bounded(integer: value, integer: limit) returns integer.
+    return floor(clamp(value, 0, limit)).
+end function.
+
+public function strike(integer: power, integer: armor) returns integer.
+    return floor(max(1, power - armor)).
+end function.
+
+public function healAmount(integer: maximum) returns integer.
+    return ceil(maximum * 0.45).
+end function.
+
+/* Keep at most three nonempty words. This demonstrates array<text>,
+   Unicode-aware size, string helpers, continue and break. */
+public function heroName(text: raw) returns text.
+    array<text>: words = split(trim(raw), " ").
+    text: result = "".
+    integer: count = 0.
+    for each word in words, do.
+        if size(word) is 0, do.
+            continue.
+        end if.
+        if count is 3, do.
+            break.
+        end if.
+        if count is greater than 0, do.
+            result = result + " ".
+        end if.
+        result = result + word.
+        count = count + 1.
+    end for.
+    if size(result) is 0, do.
+        return "Ash".
+    end if.
+    return result.
+end function.
