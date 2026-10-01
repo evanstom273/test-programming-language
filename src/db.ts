@@ -90,7 +90,10 @@ export async function ensureStarterFile(): Promise<CodeFile | undefined> {
       }
       await db.metadata.put({ id: 'initialized', value: true });
     }
-    return db.files.orderBy('createdAt').first();
+    const files = await db.files.orderBy('createdAt').toArray();
+    // Millisecond timestamps can tie during seeding; UUID ordering must not
+    // choose an arbitrary example as the initial entry.
+    return files.find(file => file.path === 'main.lang') ?? files[0];
   });
 }
 
