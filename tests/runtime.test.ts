@@ -118,7 +118,9 @@ describe('interactive sessions', () => {
     const session = new ProgramSession('input text: name = "a". input boolean: enabled = true. input array: items = [].');
     expect(() => session.setInput('name', 1)).toThrow(/different type/);
     expect(() => session.setInput('enabled', 'true')).toThrow(/different type/);
-    expect(() => session.setInput('items', [{}])).toThrow(/language values/);
+    session.setInput('items', [{}]); // Dictionaries are now language values.
+    expect(session.snapshot().inputValues.items).toEqual([{}]);
+    expect(() => session.setInput('items', [new Date()])).toThrow(/language values/);
     expect(() => session.setInput('missing', 1)).toThrow(/Unknown input/);
   });
 

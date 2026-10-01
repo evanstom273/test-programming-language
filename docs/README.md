@@ -15,6 +15,8 @@ These documents describe the behavior on main at the time they were written. Lan
 - **conventions.md** — style and naming conventions for humans and coding agents.
 - **modules.md** — current multi-file project/import behavior and module conventions.
 
+- **gdscript-inspiration.md** — annotations, typed data, resources, lifecycle/signals, graphics primitives, and compatibility decisions.
+
 ## Language identity
 
 Language Lab is intentionally English-like executable pseudocode. It should be readable without becoming verbose for the sake of it.

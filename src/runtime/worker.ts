@@ -37,6 +37,8 @@ self.onmessage = ({ data: request }: MessageEvent<WorkerRequest>) => {
         if (request.type === 'button') session.pressButton(request.id);
         if (request.type === 'input')
           session.setInput(request.name, request.value);
+        if (request.type === 'event')
+          session.dispatchEvent(request.name, request.args);
         if (request.type === 'clear') session.clearOutput();
       }
       response.snapshot = session.snapshot();

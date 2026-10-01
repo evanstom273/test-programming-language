@@ -2,11 +2,16 @@
 
 ## Current declared types
 
-Language Lab currently exposes four primitive declaration types plus user-defined enums.
+Language Lab supports primitives, enums, typed collections, and structural records. See [GDScript-inspired features](gdscript-inspiration.md) for the full typed-data contract.
 
 | Type | Example | Runtime value |
 |---|---|---|
 | integer | integer: health = 100. | finite whole number |
+| float | float: speed = 2.5. | finite double |
+| dictionary | dictionary: stats = {"hp": 100}. | text-keyed value map |
+| vector2 / vector3 | vector2: p = Vector2(1, 2). | tagged finite vector |
+| color | color: tint = Color(1, 0, 0). | hex colour text |
+| resource | resource: data = Resource("data.json"). | stable project file reference |
 | text | text: name = "Lyra". | string |
 | boolean | boolean: alive = true. | true/false |
 | array | array: items = [1, "two"]. | array of language values |
@@ -33,7 +38,7 @@ Arithmetic can produce a non-integer runtime number:
 print(5 / 2).
 ~~~
 
-That can be printed or returned, but there is not yet a stable public decimal/float declaration type. Do not invent a number, float, or decimal declaration until the language specification adds one.
+That can be printed, returned, or stored in a `float` declaration. There is no `number` or `decimal` declaration alias.
 
 Integer inputs and Inspector fields only accept whole-number values.
 
@@ -78,7 +83,7 @@ array: inventory = ["sword", "potion"].
 array: mixed = [1, "two", true, [3]].
 ~~~
 
-Arrays are currently heterogeneous. Their element type is not declared or enforced.
+Bare arrays are heterogeneous. `array<integer>` (and other nested element types) recursively validates every element.
 
 Indexing is zero-based:
 
@@ -96,7 +101,7 @@ if [1, 2] is [1, 2], do.
 end if.
 ~~~
 
-Direct indexed assignment is not currently supported.
+Indexed assignment is supported: `inventory[0] = "key".`. It copies and validates the root value before committing; constants cannot be mutated.
 
 ## Enums
 
@@ -140,9 +145,10 @@ Runtime language values are limited to:
 - strings;
 - booleans;
 - arrays containing valid language values;
+- dictionaries/records containing valid language values;
 - the internal null value.
 
-Plain JavaScript objects, NaN, and Infinity are not language values.
+Plain own-data dictionaries are language values. Host class instances, cyclic objects, NaN, and Infinity are rejected.
 
 ## Type checking
 
@@ -196,4 +202,4 @@ Arrays passed from the host are cloned so caller-owned arrays cannot mutate the 
 
 Session snapshots are cloned before being exposed to UI code.
 
-The planned richer collection/type system must explicitly define mutation, aliasing, equality, and copying before adding maps, records, sets, or generic collections.
+Containers use value semantics across assignments, calls, and events; modifying a copy never mutates its original. Dictionary equality ignores key insertion order. See the linked typed-data contract for records, constants, and nested collections.

@@ -1,4 +1,11 @@
-import { BUILTIN_FUNCTIONS } from './builtins';
+import {
+  validType as checkType,
+  controlForType,
+  matchesType,
+  type TypeDefinitions,
+} from './types';
+import { declarationHints, matchingAssets } from './annotations';
+import { BUILTIN_FUNCTIONS, BUILTIN_SIGNATURES, HOST_EVENTS } from './builtins';
 import {
   PRIMITIVE_TYPES,
   type Expression,
@@ -20,7 +27,14 @@ import { resolveImport, VirtualFileSystem } from '../workspace/vfs';
 export interface SymbolDefinition {
   id: string;
   name: string;
-  kind: 'variable' | 'function' | 'enum' | 'namespace' | 'parameter';
+  kind:
+    | 'variable'
+    | 'function'
+    | 'enum'
+    | 'namespace'
+    | 'parameter'
+    | 'record'
+    | 'signal';
   typeName?: string;
   span: Located['span'];
 }
@@ -38,6 +52,12 @@ export interface Program {
   readonly projectId: string;
   readonly entryId: string;
   readonly modules: ModuleDefinition[];
+  readonly resources: {
+    id: string;
+    path: string;
+    content: string;
+    binary: boolean;
+  }[];
 }
 export interface Analysis {
   program: Program | null;
@@ -140,6 +160,24 @@ export function analyzeProject(snapshot: ProjectSnapshot): Analysis {
     };
     const entry = visit(snapshot.project.entry);
     for (const module of modules) bindModule(module, modules, report);
+    const resources = snapshot.files
+      .filter((f) => f.kind === 'file')
+      .map((f) => ({
+        id: f.id,
+        path: f.path,
+        content: f.bytes ? '' : f.content,
+        binary: !!f.bytes,
+      }));
+    for (const field of modules.flatMap((m) => m.exports))
+      if (field.hints?.file !== undefined) {
+        field.assets = matchingAssets(
+          resources.map((r) => r.path),
+          field.hints.file,
+        );
+        field.assetIds = Object.fromEntries(
+          resources.map((r) => [r.path, r.id]),
+        );
+      }
     const fields = modules.flatMap((m) => m.exports);
     if (!entry || diagnostics.length)
       return { program: null, diagnostics, fields };
@@ -149,6 +187,7 @@ export function analyzeProject(snapshot: ProjectSnapshot): Analysis {
         projectId: snapshot.project.id,
         entryId: entry.id,
         modules,
+        resources,
       }),
       diagnostics,
       fields,
@@ -210,6 +249,10 @@ function bindModule(
   const aliases = new Set<string>();
   const enums = new Map<string, string[]>();
   const variants = new Set<string>();
+  const records = new Map<string, import('./ast').Parameter[]>();
+  const signals = new Map<string, import('./ast').Parameter[]>();
+  const definitions: TypeDefinitions = { enums: new Map(), records };
+  const constantIds = new Set<string>();
   function symbol(
     name: string,
     kind: SymbolDefinition['kind'],
@@ -224,6 +267,34 @@ function bindModule(
     return id;
   }
   for (const s of module.statements) {
+    if (s.kind === 'record') {
+      if (
+        module.statements.filter(
+          (d) =>
+            (d.kind === 'record' || d.kind === 'enum') && d.name === s.name,
+        ).length > 1 ||
+        PRIMITIVE_TYPES.has(s.name.toLowerCase())
+      )
+        report(
+          'binding',
+          'DUPLICATE_TYPE',
+          'Type already defined: ' + s.name,
+          s,
+        );
+      records.set(s.name, s.fields);
+      symbol(s.name, 'record', s);
+    }
+    if (s.kind === 'signal') {
+      if (signals.has(s.name) || Object.hasOwn(HOST_EVENTS, s.name))
+        report(
+          'binding',
+          'DUPLICATE_SIGNAL',
+          'Signal is already defined or reserved: ' + s.name,
+          s,
+        );
+      signals.set(s.name, s.parameters);
+      symbol(s.name, 'signal', s);
+    }
     if (s.kind === 'enum') {
       if (enums.has(s.name) || PRIMITIVE_TYPES.has(s.name.toLowerCase()))
         report(
@@ -233,6 +304,7 @@ function bindModule(
           s,
         );
       enums.set(s.name, s.values);
+      definitions.enums.set(s.name, { values: s.values });
       s.values.forEach((v) => variants.add(v));
       symbol(s.name, 'enum', s);
     }
@@ -280,7 +352,7 @@ function bindModule(
     }
   }
   const validType = (type: string, at: Located) => {
-    if (!PRIMITIVE_TYPES.has(type.toLowerCase()) && !enums.has(type))
+    if (!checkType(type, definitions))
       report('type', 'UNKNOWN_TYPE', 'Unknown type "' + type + '".', at);
   };
   function expression(e: Expression, scope: Scope): string | undefined {
@@ -293,7 +365,7 @@ function bindModule(
             : typeof e.value === 'number'
               ? Number.isInteger(e.value)
                 ? 'integer'
-                : 'number'
+                : 'float'
               : typeof e.value === 'string'
                 ? 'text'
                 : 'boolean';
@@ -314,6 +386,14 @@ function bindModule(
       case 'array':
         e.values.forEach((v) => expression(v, scope));
         return 'array';
+      case 'object':
+        e.entries.forEach((entry) => expression(entry.value, scope));
+        return 'dictionary';
+      case 'member': {
+        const target = expression(e.target, scope);
+        return records.get(target ?? '')?.find((f) => f.name === e.name)
+          ?.typeName;
+      }
       case 'index':
         expression(e.target, scope);
         expression(e.index, scope);
@@ -326,16 +406,21 @@ function bindModule(
         expression(e.right, scope);
         return;
       case 'call': {
-        if (e.name === 'randomInteger') {
-          if (e.args.length !== 2)
+        if (Object.hasOwn(BUILTIN_SIGNATURES, e.name)) {
+          const signature = BUILTIN_SIGNATURES[e.name];
+          if (!signature.args.includes(e.args.length))
             report(
               'type',
               'ARGUMENT_COUNT',
-              'randomInteger expects exactly 2 arguments: minimum and maximum.',
+              e.name +
+                ' expects ' +
+                (signature.args.length === 1 ? 'exactly ' : '') +
+                signature.args.join(' or ') +
+                ' arguments.',
               e,
             );
           e.args.forEach((a) => expression(a, scope));
-          return 'integer';
+          return signature.returns || undefined;
         }
         let fn = functions.get(e.name);
         if (e.name.includes('.')) {
@@ -370,11 +455,16 @@ function bindModule(
             e,
           );
         e.args.forEach((a) => expression(a, scope));
-        return;
+        return fn?.returnType;
       }
     }
   }
-  function block(statements: Statement[], inherited: Scope, top = false) {
+  function block(
+    statements: Statement[],
+    inherited: Scope,
+    top = false,
+    returnType?: string,
+  ) {
     const scope = new Scope(inherited);
     const local = new Set<string>();
     for (const s of statements) {
@@ -388,12 +478,47 @@ function bindModule(
               'Variable "' + s.name + '" already exists in this scope.',
               s,
             );
+          try {
+            declarationHints(s);
+          } catch (error) {
+            const e = error as LanguageError;
+            report('type', 'INVALID_ANNOTATION', e.message, {
+              ...s,
+              span: e.span,
+            });
+          }
           const type = expression(s.value, scope);
+          const staticValue = constant(
+            s.value,
+            new Map(
+              [...variants].filter((v) => !scope.has(v)).map((v) => [v, v]),
+            ),
+          );
           if (
+            staticValue !== undefined &&
+            checkType(s.typeName, definitions) &&
+            !matchesType(s.typeName, staticValue, definitions)
+          )
+            report(
+              'type',
+              'TYPE_MISMATCH',
+              'Value is declared as ' +
+                s.typeName +
+                ', but the assigned value has a different type.',
+              s,
+            );
+          if (
+            staticValue === undefined &&
             type &&
-            type !== 'enum-value' &&
+            PRIMITIVE_TYPES.has(type) &&
             PRIMITIVE_TYPES.has(s.typeName.toLowerCase()) &&
-            type !== s.typeName.toLowerCase()
+            type !== s.typeName.toLowerCase() &&
+            !(s.typeName === 'float' && type === 'integer') &&
+            !(s.typeName === 'color' && type === 'text') &&
+            !(
+              s.typeName === 'dictionary' &&
+              ['vector2', 'vector3', 'resource'].includes(type)
+            )
           )
             report(
               'type',
@@ -405,6 +530,8 @@ function bindModule(
                 ', but the assigned value has a different type.',
               s,
             );
+          if (s.constant)
+            constantIds.add(symbol(s.name, 'variable', s, s.typeName));
           local.add(s.name);
           scope.bind(
             s.name,
@@ -413,7 +540,36 @@ function bindModule(
           );
           break;
         }
+        case 'set': {
+          expression(s.target, scope);
+          expression(s.value, scope);
+          let root = s.target;
+          while (root.kind === 'member' || root.kind === 'index')
+            root = root.target;
+          if (root.kind !== 'identifier')
+            report(
+              'binding',
+              'INVALID_ASSIGNMENT',
+              'Assignment needs a variable root.',
+              s,
+            );
+          else if (constantIds.has(scope.identities.get(root.name) ?? ''))
+            report(
+              'binding',
+              'CONSTANT_ASSIGNMENT',
+              'Cannot change constant ' + root.name + '.',
+              s,
+            );
+          break;
+        }
         case 'assign':
+          if (constantIds.has(scope.identities.get(s.name) ?? ''))
+            report(
+              'binding',
+              'CONSTANT_ASSIGNMENT',
+              'Cannot change constant ' + s.name + '.',
+              s,
+            );
           if (!scope.has(s.name))
             report(
               'binding',
@@ -433,6 +589,7 @@ function bindModule(
             );
             break;
           }
+          if (s.returnType) validType(s.returnType, s);
           const params = new Scope(globals);
           const names = new Set<string>();
           for (const p of s.parameters) {
@@ -451,7 +608,7 @@ function bindModule(
               symbol(p.name, 'parameter', p, p.typeName),
             );
           }
-          block(s.body, params);
+          block(s.body, params, false, s.returnType);
           break;
         }
         case 'button':
@@ -460,13 +617,13 @@ function bindModule(
         case 'if':
           for (const b of s.branches) {
             expression(b.condition, scope);
-            block(b.body, scope);
+            block(b.body, scope, false, returnType);
           }
-          if (s.elseBody) block(s.elseBody, scope);
+          if (s.elseBody) block(s.elseBody, scope, false, returnType);
           break;
         case 'while':
           expression(s.condition, scope);
-          block(s.body, scope);
+          block(s.body, scope, false, returnType);
           break;
         case 'forEach':
           expression(s.iterable, scope);
@@ -518,10 +675,99 @@ function bindModule(
           break;
         case 'return':
           if (s.value) expression(s.value, scope);
+          if (returnType) {
+            const value = s.value
+              ? constant(
+                  s.value,
+                  new Map(
+                    [...variants]
+                      .filter((v) => !scope.has(v))
+                      .map((v) => [v, v]),
+                  ),
+                )
+              : null;
+            if (
+              value !== undefined &&
+              !matchesType(returnType, value, definitions)
+            )
+              report(
+                'type',
+                'RETURN_TYPE',
+                'Return value does not match ' + returnType + '.',
+                s,
+              );
+          }
           break;
         case 'expression':
           expression(s.expression, scope);
           break;
+        case 'record':
+        case 'signal': {
+          const fields = s.kind === 'record' ? s.fields : s.parameters;
+          const names = new Set<string>();
+          for (const field of fields) {
+            validType(field.typeName, field);
+            if (names.has(field.name))
+              report(
+                'binding',
+                'DUPLICATE_FIELD',
+                'Duplicate name: ' + field.name,
+                field,
+              );
+            names.add(field.name);
+          }
+          break;
+        }
+        case 'emit': {
+          const signal = signals.get(s.name);
+          if (!signal)
+            report('binding', 'UNKNOWN_SIGNAL', 'Unknown signal: ' + s.name, s);
+          else if (signal.length !== s.args.length)
+            report(
+              'type',
+              'ARGUMENT_COUNT',
+              'Signal argument count does not match.',
+              s,
+            );
+          s.args.forEach((a) => expression(a, scope));
+          break;
+        }
+        case 'handler': {
+          const expected = Object.hasOwn(HOST_EVENTS, s.event)
+            ? HOST_EVENTS[s.event]
+            : signals.get(s.event)?.map((p) => p.typeName);
+          if (!expected)
+            report('binding', 'UNKNOWN_EVENT', 'Unknown event: ' + s.event, s);
+          else if (
+            expected.join(',') !== s.parameters.map((p) => p.typeName).join(',')
+          )
+            report(
+              'type',
+              'EVENT_PARAMETERS',
+              'Event parameter types must be: ' + expected.join(', '),
+              s,
+            );
+          const params = new Scope(globals);
+          const names = new Set<string>();
+          s.parameters.forEach((p) => {
+            validType(p.typeName, p);
+            if (names.has(p.name))
+              report(
+                'binding',
+                'DUPLICATE_PARAMETER',
+                'Duplicate parameter: ' + p.name,
+                p,
+              );
+            names.add(p.name);
+            params.bind(
+              p.name,
+              p.typeName,
+              symbol(p.name, 'parameter', p, p.typeName),
+            );
+          });
+          block(s.body, params);
+          break;
+        }
         case 'enum':
           if (!top)
             report(
@@ -534,6 +780,9 @@ function bindModule(
       }
     }
   }
+  for (const s of module.statements)
+    if (s.kind === 'declare' && s.constant)
+      constantIds.add(symbol(s.name, 'variable', s, s.typeName));
   block(module.statements, new Scope(), true);
   const constants = new Map<string, Value>();
   for (const variant of variants) constants.set(variant, variant);
@@ -544,17 +793,17 @@ function bindModule(
     else constants.delete(s.name);
     if (s.exposure !== 'export') continue;
     const options = enums.get(s.typeName);
-    const control = options
-      ? 'enum'
-      : s.typeName.toLowerCase() === 'integer'
-        ? 'number'
-        : s.typeName.toLowerCase() === 'array'
-          ? 'array'
-          : s.typeName.toLowerCase() === 'boolean'
-            ? 'boolean'
-            : 'text';
+    const control = controlForType(s.typeName, definitions.enums);
+    let metadata = {};
+    try {
+      metadata = declarationHints(s);
+    } catch {
+      /* diagnostic already reported */
+    }
     module.exports.push({
       name: s.name,
+      variableName: s.name,
+      ...metadata,
       fileId: module.id,
       path: module.path,
       typeName: s.typeName,
@@ -566,11 +815,13 @@ function bindModule(
         options?.[0] ??
         (control === 'number'
           ? 0
-          : control === 'array'
-            ? []
-            : control === 'boolean'
-              ? false
-              : ''),
+          : control === 'object'
+            ? {}
+            : control === 'array'
+              ? []
+              : control === 'boolean'
+                ? false
+                : ''),
     });
   }
 }
@@ -585,6 +836,13 @@ function constant(
     const v = constant(e.value, values);
     if (e.operator === 'negative' && typeof v === 'number') return -v;
     if (e.operator === 'not' && typeof v === 'boolean') return !v;
+  }
+  if (e.kind === 'object') {
+    const entries = e.entries.map(
+      (entry) => [entry.key, constant(entry.value, values)] as const,
+    );
+    if (entries.every(([, v]) => v !== undefined))
+      return Object.fromEntries(entries) as Value;
   }
   if (e.kind === 'array') {
     const vs = e.values.map((v) => constant(v, values));

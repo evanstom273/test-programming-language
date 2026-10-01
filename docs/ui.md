@@ -219,3 +219,7 @@ That makes the same program model reusable by:
 - future game or UI hosts.
 
 The appearance is host-specific. The semantics are language/runtime-specific.
+
+## Typed data and events extension
+
+See [GDScript-inspired features](gdscript-inspiration.md) for supported annotations, float/collection/record/resource controls, lifecycle events, signals, and worker scheduling. These extend the existing export/input/button model.

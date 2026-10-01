@@ -1,0 +1,19 @@
+@range(0, 2, 0.1)
+input float: speed = 1.
+input float: elapsed = 0.
+
+on start, do.
+    print("Started. Stop ends the update loop; Run starts a fresh session.").
+end on.
+
+on update(float: deltaTime), do.
+    elapsed = elapsed + deltaTime * speed.
+end on.
+
+on keyDown(text: key), do.
+    print("Key", key).
+end on.
+
+on pointerDown(float: x, float: y), do.
+    print("Pointer", x, y).
+end on.

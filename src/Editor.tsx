@@ -1,3 +1,4 @@
+import { BUILTIN_SIGNATURES } from './language/builtins';
 import { KEYWORDS } from './language/lexer';
 import { useEffect, useRef } from 'react';
 import { basicSetup } from 'codemirror';
@@ -12,6 +13,7 @@ import { oneDark } from '@codemirror/theme-one-dark';
 const language = StreamLanguage.define({
   token(stream) {
     if (stream.eatSpace()) return null;
+    if (stream.match(/^@[A-Za-z_][A-Za-z0-9_]*/)) return 'meta';
     if (stream.match(/^"(?:\\.|[^"\n])*"/)) return 'string';
     if (stream.match(/^\d+(?:\.\d+)?/)) return 'number';
 
@@ -20,22 +22,47 @@ const language = StreamLanguage.define({
       stream.next();
       return 'operator';
     }
-    if (char && ':.,()[]'.includes(char)) {
+    if (char && ':.,()[]{}<>'.includes(char)) {
       stream.next();
       return 'punctuation';
     }
 
-    if (stream.match(/^[A-Za-z][A-Za-z0-9]*/)) {
+    if (stream.match(/^[A-Za-z_][A-Za-z0-9_]*/)) {
       const word = stream.current();
       return KEYWORDS.has(word.toLowerCase()) ? 'keyword' : 'variableName';
     }
 
     stream.next();
     return 'invalid';
-  }
+  },
 });
 
 const completions = completeFromList([
+  ...Object.keys(BUILTIN_SIGNATURES).map((label) => ({
+    label,
+    type: 'function',
+  })),
+  ...[
+    'range',
+    'label',
+    'help',
+    'group',
+    'multiline',
+    'placeholder',
+    'file',
+    'color',
+  ].map((name) => ({ label: '@' + name, type: 'keyword' })),
+  { label: 'on start', type: 'keyword', apply: 'on start, do.\n    \nend on.' },
+  {
+    label: 'on update',
+    type: 'keyword',
+    apply: 'on update(float: deltaTime), do.\n    \nend on.',
+  },
+  {
+    label: 'record',
+    type: 'keyword',
+    apply: 'record Stats [integer: health].',
+  },
   ...Array.from(KEYWORDS).map((label) => ({ label, type: 'keyword' })),
   { label: 'print()', type: 'function', apply: 'print().' },
   { label: 'randomInteger()', type: 'function', apply: 'randomInteger(1, 6)' },
@@ -48,13 +75,37 @@ const completions = completeFromList([
   { label: 'input text:', type: 'keyword', apply: 'input text: ' },
   { label: 'input boolean:', type: 'keyword', apply: 'input boolean: ' },
   { label: 'input array:', type: 'keyword', apply: 'input array: ' },
-  { label: 'button', type: 'keyword', apply: 'button "Calculate", do.\n    \nend button.' },
+  {
+    label: 'button',
+    type: 'keyword',
+    apply: 'button "Calculate", do.\n    \nend button.',
+  },
   { label: 'enum', type: 'keyword', apply: 'enum Name [first, second].' },
-  { label: 'if', type: 'keyword', apply: 'if condition is true, do.\n    \nend if.' },
-  { label: 'while', type: 'keyword', apply: 'while condition is true, do.\n    \nend while.' },
-  { label: 'for each', type: 'keyword', apply: 'for each item in items, do.\n    \nend for.' },
-  { label: 'for range', type: 'keyword', apply: 'for x in range(10), do.\n    \nend for.' },
-  { label: 'function', type: 'keyword', apply: 'function name().\n    \nend function.' }
+  {
+    label: 'if',
+    type: 'keyword',
+    apply: 'if condition is true, do.\n    \nend if.',
+  },
+  {
+    label: 'while',
+    type: 'keyword',
+    apply: 'while condition is true, do.\n    \nend while.',
+  },
+  {
+    label: 'for each',
+    type: 'keyword',
+    apply: 'for each item in items, do.\n    \nend for.',
+  },
+  {
+    label: 'for range',
+    type: 'keyword',
+    apply: 'for x in range(10), do.\n    \nend for.',
+  },
+  {
+    label: 'function',
+    type: 'keyword',
+    apply: 'function name().\n    \nend function.',
+  },
 ]);
 
 interface EditorProps {
@@ -94,29 +145,34 @@ export function Editor({ value, onChange, onRun, diagnostics }: EditorProps) {
               return true;
             }
             return false;
-          }
+          },
         }),
         EditorView.updateListener.of((update) => {
-          if (update.docChanged) onChangeRef.current(update.state.doc.toString());
+          if (update.docChanged)
+            onChangeRef.current(update.state.doc.toString());
         }),
         EditorView.theme({
           '&': { height: '100%', backgroundColor: '#0d1117', fontSize: '14px' },
           '.cm-scroller': {
-            fontFamily: 'JetBrains Mono, SFMono-Regular, Consolas, Liberation Mono, monospace',
+            fontFamily:
+              'JetBrains Mono, SFMono-Regular, Consolas, Liberation Mono, monospace',
             lineHeight: '1.7',
-            overflow: 'auto'
+            overflow: 'auto',
           },
           '.cm-content': { padding: '18px 0 28px' },
           '.cm-gutters': {
             backgroundColor: '#0d1117',
             borderRight: '1px solid #21262d',
-            color: '#6e7681'
+            color: '#6e7681',
           },
           '.cm-activeLine': { backgroundColor: '#161b224d' },
-          '.cm-activeLineGutter': { backgroundColor: '#161b22', color: '#c9d1d9' },
-          '.cm-cursor': { borderLeftColor: '#58a6ff' }
-        })
-      ]
+          '.cm-activeLineGutter': {
+            backgroundColor: '#161b22',
+            color: '#c9d1d9',
+          },
+          '.cm-cursor': { borderLeftColor: '#58a6ff' },
+        }),
+      ],
     });
 
     view.current = new EditorView({ state, parent: host.current });
@@ -131,15 +187,28 @@ export function Editor({ value, onChange, onRun, diagnostics }: EditorProps) {
     if (!view.current) return;
     const current = view.current.state.doc.toString();
     if (current === value) return;
-    view.current.dispatch({ changes: { from: 0, to: current.length, insert: value } });
+    view.current.dispatch({
+      changes: { from: 0, to: current.length, insert: value },
+    });
   }, [value]);
 
   useEffect(() => {
     if (!view.current) return;
     const length = view.current.state.doc.length;
-    view.current.dispatch(setDiagnostics(view.current.state, diagnostics.map(d => ({
-      from: Math.min(length, d.span.start.offset), to: Math.min(length, Math.max(d.span.start.offset, d.span.end.offset)), severity: d.severity, message: d.message
-    }))));
+    view.current.dispatch(
+      setDiagnostics(
+        view.current.state,
+        diagnostics.map((d) => ({
+          from: Math.min(length, d.span.start.offset),
+          to: Math.min(
+            length,
+            Math.max(d.span.start.offset, d.span.end.offset),
+          ),
+          severity: d.severity,
+          message: d.message,
+        })),
+      ),
+    );
   }, [diagnostics]);
 
   return <div ref={host} className="h-full min-h-0 overflow-hidden" />;

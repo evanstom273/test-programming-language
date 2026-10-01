@@ -1,3 +1,4 @@
+import { FieldGroups } from './components/FieldGroups';
 import { useState } from 'react';
 import { useWorkspace } from './hooks/useWorkspace';
 import { useProjectAnalysis } from './hooks/useProjectAnalysis';
@@ -34,7 +35,7 @@ export default function App() {
   const updateInput = (name: string, value: ExportValue) => {
     const field = program.snapshot?.inputs.find(f => f.name === name);
     if (!field?.fileId) return;
-    void program.setInput(name, value).then(valid => { if (valid) void view.updateOverride(field.fileId!, 'inputOverrides', field.label ?? field.name, value); });
+    void program.setInput(name, value).then(valid => { if (valid) void view.updateOverride(field.fileId!, 'inputOverrides', field.variableName ?? field.name, value); });
   };
   const resetInputs = () => { void view.resetInputs().then(snapshot => { if (snapshot) program.run(snapshot); }); setConsoleOpen(true); };
   const renderInspector = ({ mobile = false }: { mobile?: boolean }) => (
@@ -62,8 +63,8 @@ export default function App() {
             Nothing exported yet. Add something like <span className="font-mono text-[#c9d1d9]">export integer: score = 0.</span>
           </div>
         ) : (
-          <div className="space-y-4">
-            {exportAnalysis.fields.map((field) => {
+          <FieldGroups fields={exportAnalysis.fields}>
+            {field => {
               const overrides = view.projectFiles.find(f => f.id === field.fileId)?.exportOverrides || {};
               const hasOverride = Object.prototype.hasOwnProperty.call(overrides, field.name);
               const current = hasOverride ? overrides[field.name] : field.defaultValue;
@@ -80,8 +81,8 @@ export default function App() {
                   />
                 </div>
               );
-            })}
-          </div>
+            }}
+          </FieldGroups>
         )}
       </div>
     </aside>
@@ -153,7 +154,7 @@ export default function App() {
 
             {consoleOpen && (
               <div className="ide-scrollbar min-h-0 flex-1 overflow-y-auto overflow-x-hidden border-t border-[#161b22] px-4 py-3">
-                <ProgramOutput key={view.project?.id + ':' + program.generation} snapshot={program.snapshot} stale={program.stale} disabled={!program.usable} error={error} onInput={updateInput} onButton={program.pressButton} />
+                <ProgramOutput key={view.project?.id + ':' + program.generation} snapshot={program.snapshot} stale={program.stale} disabled={!program.usable} error={error} onInput={updateInput} onButton={program.pressButton} onEvent={program.sendEvent} />
               </div>
             )}
           </section>

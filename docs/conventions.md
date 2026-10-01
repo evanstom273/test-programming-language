@@ -13,7 +13,7 @@ enemyDamage
 numberOne
 ~~~
 
-Identifiers do not currently support underscores.
+Underscores are supported; camelCase remains preferred.
 
 Enum type names should generally use PascalCase:
 
@@ -62,7 +62,7 @@ end function.
 end button.
 ~~~
 
-Do not invent braces.
+Use explicit block endings. Braces are dictionary literals, not statement blocks.
 
 Indent blocks with four spaces.
 
@@ -196,8 +196,7 @@ Do not invent syntax because another language has it.
 Check support before using:
 
 - comments;
-- records/classes;
-- decimal/float declaration types;
+- classes/inheritance;
 - async/await;
 - exception handling;
 - break/continue;
