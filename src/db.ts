@@ -1,11 +1,13 @@
 import Dexie, { type EntityTable } from 'dexie';
-import type { ExportOverrides } from './language/runtime';
+import interactiveCalculatorCode from '../examples/interactive-calculator.lang?raw';
+import type { ExportValue, ExportOverrides } from './language/runtime';
 
 export interface CodeFile {
   id: string;
   name: string;
   content: string;
   exportOverrides?: ExportOverrides;
+  inputOverrides?: ExportOverrides;
   createdAt: number;
   updatedAt: number;
 }
@@ -72,7 +74,12 @@ function migrateLegacyColonSyntax(content: string): string {
   );
 }
 
-export async function ensureStarterFile(): Promise<CodeFile> {
+// Serialize first-run initialization (including React StrictMode's two effects).
+export function ensureStarterFile(): Promise<CodeFile> {
+  return db.transaction('rw', db.files, initializeFiles);
+}
+
+async function initializeFiles(): Promise<CodeFile> {
   let stored = await db.files.orderBy('updatedAt').reverse().toArray();
 
   if (!stored.length) {
@@ -111,5 +118,31 @@ export async function ensureStarterFile(): Promise<CodeFile> {
     });
   }
 
+  // A new example name preserves existing calculators and any user edits.
+  if (!await db.files.where('name').equals('interactive-calculator.lang').first()) {
+    const now = Date.now();
+    await db.files.add({
+      id: crypto.randomUUID(), name: 'interactive-calculator.lang',
+      content: interactiveCalculatorCode, exportOverrides: {}, inputOverrides: {},
+      createdAt: now, updatedAt: now
+    });
+  }
+
   return stored[0];
+}
+
+export type OverrideKind = 'exportOverrides' | 'inputOverrides';
+
+export function withOverride(overrides: ExportOverrides = {}, name: string, value: ExportValue | undefined): ExportOverrides {
+  const next = { ...overrides };
+  if (value === undefined) delete next[name];
+  else Object.defineProperty(next, name, { value, enumerable: true, configurable: true, writable: true });
+  return next;
+}
+
+/** Read/modify/write atomically so rapid edits to different controls cannot race. */
+export async function saveOverride(id: string, kind: OverrideKind, name: string, value: ExportValue | undefined): Promise<void> {
+  await db.files.where('id').equals(id).modify((file) => {
+    file[kind] = withOverride(file[kind], name, value);
+  });
 }
