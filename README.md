@@ -1,28 +1,116 @@
 # Language Lab
 
-A browser-based IDE and early interpreter for an English-like, executable-pseudocode programming language.
+A browser-based IDE and interpreter for an English-like, executable-pseudocode programming language.
 
-The language deliberately keeps symbolic syntax small. The current allowed symbols are:
+## Syntax
+
+The language intentionally keeps symbolic syntax small while allowing familiar symbols where they improve readability.
+
+Allowed symbols currently include:
 
 ```text
-. , ( ) [ ] " =
+. , : ( ) [ ] " = + - * /
 ```
 
-Logic and arithmetic are intended to read mostly as words.
-
-## Current example
+Typed declarations always use a colon:
 
 ```text
-text name = "Lyra".
-integer health = 100.
-integer damage = 25.
-array inventory = ["sword", "potion", "key"].
+integer: health = 100.
+text: name = "Lyra".
+array: inventory = ["sword", "potion"].
+```
 
-print("Hello", name).
+Arithmetic supports both words and symbols:
+
+```text
 health = health minus damage.
-print("Health remaining", health).
-print("First item", inventory[0]).
+health = health - damage.
+
+total = price plus tax.
+total = price + tax.
+
+area = width times height.
+area = width * height.
+
+average = total divided by count.
+average = total / count.
 ```
+
+## Enums and exports
+
+```text
+enum Operation [add, subtract, multiply, divide].
+
+export integer: numberOne = 10.
+export integer: numberTwo = 5.
+export Operation: operation = add.
+```
+
+Exported values automatically appear in the IDE Inspector. Integer exports become number inputs, text exports become text fields, booleans become toggles, enums become dropdowns, and arrays have a basic JSON editor. Inspector overrides are stored locally in IndexedDB and applied when the program runs.
+
+## Control flow
+
+```text
+if health is less than or equal to 0, do.
+    print("Dead.").
+elif health is less than 25, do.
+    print("Low health.").
+else, do.
+    print("Still going.").
+end if.
+
+while health is greater than 0, do.
+    health = health - 1.
+end while.
+
+for each item in inventory, do.
+    print(item).
+end for.
+
+for integer: i from 1 to 10, do.
+    print(i).
+end for.
+```
+
+## Functions
+
+```text
+function add(integer: first, integer: second).
+    return first + second.
+end function.
+
+print(add(10, 20)).
+```
+
+## Calculator example
+
+A `calculator.lang` example is created automatically:
+
+```text
+enum Operation [add, subtract, multiply, divide].
+
+export integer: numberOne = 10.
+export integer: numberTwo = 5.
+export Operation: operation = add.
+
+function calculate().
+    if operation is add, do.
+        return numberOne plus numberTwo.
+    elif operation is subtract, do.
+        return numberOne - numberTwo.
+    elif operation is multiply, do.
+        return numberOne * numberTwo.
+    elif operation is divide, do.
+        return numberOne / numberTwo.
+    else, do.
+        return 0.
+    end if.
+end function.
+
+print(calculate()).
+```
+
+Change the exported inputs in the Inspector, press Run, and the output uses those overrides.
 
 ## Stack
 
@@ -35,7 +123,7 @@ print("First item", inventory[0]).
 - vite-plugin-pwa
 - TypeScript lexer, parser, and interpreter
 
-Everything currently runs directly in the browser. There is no Python runtime or server dependency.
+Everything runs directly in the browser.
 
 ## Development
 
@@ -50,17 +138,4 @@ Build with:
 npm run build
 ```
 
-## Current language foundation
-
-- Tokenizer / lexer with line and column information
-- `integer`, `text`, `boolean`, and `array` declarations
-- Assignment with `=`
-- Strings, numbers, booleans, arrays, and array indexing
-- `print(...)`
-- English arithmetic: `plus`, `minus`, `times`, `divided by`, `remainder`
-- CodeMirror highlighting, completion suggestions, and diagnostics
-- Local files persisted with IndexedDB
-- Installable PWA shell for phone/desktop
-- GitHub Pages deployment workflow
-
-This is intentionally only the foundation. The language and IDE are meant to evolve together.
+The PWA configuration follows the same GitHub Pages-aware pattern used by the working PWAs in this account: the production base path, manifest id, scope, and start URL all point explicitly at `/test-programming-language/`.

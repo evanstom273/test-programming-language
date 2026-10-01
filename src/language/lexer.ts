@@ -4,12 +4,17 @@ export enum TokenType {
   Identifier = 'Identifier',
   Keyword = 'Keyword',
   Equals = 'Equals',
+  Colon = 'Colon',
   OpenParen = 'OpenParen',
   CloseParen = 'CloseParen',
   OpenBracket = 'OpenBracket',
   CloseBracket = 'CloseBracket',
   Comma = 'Comma',
   Period = 'Period',
+  Plus = 'Plus',
+  Minus = 'Minus',
+  Star = 'Star',
+  Slash = 'Slash',
   EndOfFile = 'EndOfFile'
 }
 
@@ -28,19 +33,27 @@ export class LanguageError extends Error {
 }
 
 export const KEYWORDS = new Set([
-  'integer', 'text', 'array', 'boolean', 'print',
+  'integer', 'text', 'array', 'boolean', 'print', 'export', 'enum',
+  'function', 'return', 'if', 'elif', 'else', 'end', 'do',
+  'while', 'for', 'each', 'in', 'from', 'to', 'step',
   'plus', 'minus', 'times', 'divided', 'by', 'remainder',
+  'is', 'equal', 'not', 'less', 'than', 'greater', 'or', 'and',
   'true', 'false'
 ]);
 
 const punctuation: Record<string, TokenType> = {
   '=': TokenType.Equals,
+  ':': TokenType.Colon,
   '(': TokenType.OpenParen,
   ')': TokenType.CloseParen,
   '[': TokenType.OpenBracket,
   ']': TokenType.CloseBracket,
   ',': TokenType.Comma,
-  '.': TokenType.Period
+  '.': TokenType.Period,
+  '+': TokenType.Plus,
+  '-': TokenType.Minus,
+  '*': TokenType.Star,
+  '/': TokenType.Slash
 };
 
 export function tokenize(sourceCode: string): Token[] {
@@ -79,6 +92,14 @@ export function tokenize(sourceCode: string): Token[] {
       while (index < sourceCode.length && sourceCode[index] !== '"') {
         if (sourceCode[index] === '\n') {
           throw new LanguageError('Strings cannot span multiple lines yet.', line, column);
+        }
+        if (sourceCode[index] === '\\' && index + 1 < sourceCode.length) {
+          const escaped = sourceCode[index + 1];
+          const map: Record<string, string> = { n: '\n', t: '\t', '"': '"', '\\': '\\' };
+          value += map[escaped] ?? escaped;
+          index += 2;
+          column += 2;
+          continue;
         }
         value += sourceCode[index];
         index += 1;
@@ -143,7 +164,7 @@ export function tokenize(sourceCode: string): Token[] {
     }
 
     throw new LanguageError(
-      'Unexpected symbol "' + char + '". Allowed symbols are . , ( ) [ ] " =.',
+      'Unexpected symbol "' + char + '". Allowed symbols are . , : ( ) [ ] " = + - * /.',
       line,
       column
     );
