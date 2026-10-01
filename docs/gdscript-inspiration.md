@@ -122,7 +122,7 @@ Host events are:
 
 Every handler ends with `end on.`. The IDE sends at most one awaited update at a time, targeting about 30 updates/second. Delta is capped at 0.25 seconds; background throttling does not trigger catch-up loops. This is an interactive lifecycle, not a deterministic physics clock. Updates pause during actions/input acknowledgement and after an execution error; Stop, source changes, and a new Run terminate the old worker/epoch. Each handler gets fresh locals over module globals. Keyboard events never globally intercept the editor. Pointer events use a labelled, focusable surface with touch-sized dimensions.
 
-An action and all signals it triggers share operation/time limits and a 1,024-event budget. Event loops cannot reset their own budget. Failed actions preserve completed writes, discard pending events, and report a diagnostic; a later explicit action can recover. Output/value limits, the worker watchdog, and hard Stop remain active.
+An action and all signals it triggers share operation/time limits and a 1,024-event budget, plus a four-million-character cap on the serialized payloads currently queued. Event loops cannot reset their own budget. Failed actions preserve completed writes, discard pending events, and report a diagnostic; a later explicit action can recover. Output/value limits, the worker watchdog, and hard Stop remain active.
 
 ## Graphics vocabulary
 
