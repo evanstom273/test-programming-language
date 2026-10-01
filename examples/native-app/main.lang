@@ -1,0 +1,5 @@
+input text: name = "Lyra".
+
+button "Say hello", do.
+    print("Hello from Language Lab,", name).
+end button.

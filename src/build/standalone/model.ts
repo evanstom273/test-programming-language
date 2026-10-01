@@ -22,6 +22,7 @@ export function serializeProject(snapshot: ProjectSnapshot): string {
       name: clean.project.name,
       entry: clean.project.entry,
       schemaVersion: 1,
+      application: clean.project.application,
       createdAt: 0,
       updatedAt: 0,
     },

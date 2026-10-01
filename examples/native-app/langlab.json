@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "name": "Native Hello",
+  "entry": "main.lang",
+  "application": {
+    "name": "Native Hello",
+    "identifier": "com.languagelab.nativehello",
+    "version": "1.0.0",
+    "window": {
+      "width": 900,
+      "height": 600,
+      "fullscreen": false,
+      "resizable": true
+    },
+    "saveData": {
+      "location": "appData"
+    }
+  }
+}

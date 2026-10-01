@@ -63,6 +63,14 @@
       {
         "command": "langlab.exportHTML",
         "title": "Language Lab: Export Standalone HTML"
+      },
+      {
+        "command": "langlab.buildWindows",
+        "title": "Language Lab: Build Windows Application"
+      },
+      {
+        "command": "langlab.buildAndroid",
+        "title": "Language Lab: Build Android APK"
       }
     ],
     "menus": {
@@ -80,6 +88,14 @@
         },
         {
           "command": "langlab.exportHTML",
+          "when": "isWorkspaceTrusted"
+        },
+        {
+          "command": "langlab.buildWindows",
+          "when": "isWorkspaceTrusted"
+        },
+        {
+          "command": "langlab.buildAndroid",
           "when": "isWorkspaceTrusted"
         }
       ]
