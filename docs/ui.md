@@ -78,13 +78,14 @@ Pressing Run creates a fresh program session.
 
 The current lifecycle is:
 
-1. parse the source;
-2. collect enums/functions/buttons;
-3. initialize declarations in source order;
-4. evaluate each source default;
-5. apply the matching Inspector or input override when present;
-6. execute ordinary top-level statements;
-7. expose the program's inputs/buttons/output to the host UI.
+1. take an immutable project snapshot;
+2. resolve reachable modules and parse them with file-aware source spans;
+3. statically analyze bindings/types and build an immutable Program;
+4. send the project to the runtime Web Worker;
+5. initialize each reachable module once in the new RuntimeSession;
+6. evaluate declaration defaults in source order and apply matching Inspector/input overrides;
+7. execute ordinary top-level statements;
+8. expose serializable inputs, buttons, and output to the host UI.
 
 After initialization, button presses execute against the current persistent globals.
 
