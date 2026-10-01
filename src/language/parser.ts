@@ -1,17 +1,39 @@
+import { BUILTIN_FUNCTIONS } from './builtins';
 import { LanguageError, Token, TokenType, tokenize } from './lexer';
-import { PRIMITIVE_TYPES, type Expression, type Parameter, type Statement } from './ast';
+import {
+  PRIMITIVE_TYPES,
+  type Annotation,
+  type Value,
+  type Expression,
+  type Parameter,
+  type Statement,
+} from './ast';
 
-interface IfBranch { condition: Expression; body: Statement[] }
+interface IfBranch {
+  condition: Expression;
+  body: Statement[];
+}
 
 export function parseSource(source: string, fileId = 'main.lang'): Statement[] {
   const ast = new Parser(tokenize(source, fileId)).parseProgram();
   function spans(value: unknown): void {
     if (!value || typeof value !== 'object') return;
     const node = value as Record<string, unknown>;
-    for (const [key, child] of Object.entries(node)) if (key !== 'span') spans(child);
+    for (const [key, child] of Object.entries(node))
+      if (key !== 'span') spans(child);
     if (node.kind === 'binary') {
-      const binary = node as unknown as Extract<Expression, {kind: 'binary'}>;
-      binary.span = { fileId, start: binary.span.start.offset < binary.left.span.start.offset ? binary.span.start : binary.left.span.start, end: binary.span.end.offset > binary.right.span.end.offset ? binary.span.end : binary.right.span.end };
+      const binary = node as unknown as Extract<Expression, { kind: 'binary' }>;
+      binary.span = {
+        fileId,
+        start:
+          binary.span.start.offset < binary.left.span.start.offset
+            ? binary.span.start
+            : binary.left.span.start,
+        end:
+          binary.span.end.offset > binary.right.span.end.offset
+            ? binary.span.end
+            : binary.right.span.end,
+      };
     }
   }
   spans(ast);
@@ -30,7 +52,13 @@ class Parser {
     return statements;
   }
 
-  private span(start: Token) { return { fileId: start.span.fileId, start: start.span.start, end: this.previous().span.end }; }
+  private span(start: Token) {
+    return {
+      fileId: start.span.fileId,
+      start: start.span.start,
+      end: this.previous().span.end,
+    };
+  }
   private statement(): Statement {
     const start = this.peek();
     const result = this.statementBody();
@@ -38,18 +66,168 @@ class Parser {
     return result;
   }
   private statementBody(): Statement {
+    if (this.check(TokenType.At)) {
+      const annotations: Annotation[] = [];
+      while (this.match(TokenType.At)) {
+        const start = this.previous();
+        const name = this.advance();
+        if (![TokenType.Identifier, TokenType.Keyword].includes(name.type))
+          throw new LanguageError(
+            'Expected annotation name.',
+            name.line,
+            name.column,
+            name.span,
+          );
+        const args: Value[] = [];
+        if (this.match(TokenType.OpenParen)) {
+          if (!this.check(TokenType.CloseParen))
+            do {
+              const negative = this.match(TokenType.Minus);
+              const token = this.advance();
+              if (token.type === TokenType.Number)
+                args.push(Number(token.value) * (negative ? -1 : 1));
+              else if (token.type === TokenType.String && !negative)
+                args.push(token.value);
+              else
+                throw new LanguageError(
+                  'Annotation arguments must be numeric or text literals; calls are not evaluated.',
+                  token.line,
+                  token.column,
+                  token.span,
+                );
+            } while (this.match(TokenType.Comma));
+          this.consume(
+            TokenType.CloseParen,
+            'Expected ) after annotation arguments.',
+          );
+        }
+        annotations.push({
+          name: name.value,
+          args,
+          line: start.line,
+          column: start.column,
+          span: this.span(start),
+        });
+      }
+      const declaration = this.statement();
+      if (declaration.kind !== 'declare' || !declaration.exposure)
+        throw new LanguageError(
+          'Control annotations require an export or input declaration.',
+          declaration.line,
+          declaration.column,
+          declaration.span,
+        );
+      declaration.annotations = annotations;
+      return declaration;
+    }
+    if (this.matchKeyword('constant')) {
+      const declaration = this.declaration(null);
+      if (declaration.kind === 'declare') declaration.constant = true;
+      return declaration;
+    }
+    if (this.matchKeyword('record')) {
+      this.requireTopLevel('record');
+      const start = this.previous();
+      const name = this.consume(TokenType.Identifier, 'Expected record name.');
+      this.consume(TokenType.OpenBracket, 'Expected [ before record fields.');
+      const fields = this.parameters(TokenType.CloseBracket);
+      this.consume(TokenType.CloseBracket, 'Expected ] after record fields.');
+      this.consume(TokenType.Period, 'Expected period after record.');
+      return {
+        kind: 'record',
+        name: name.value,
+        fields,
+        line: start.line,
+        column: start.column,
+        span: this.span(start),
+      };
+    }
+    if (this.matchKeyword('signal')) {
+      this.requireTopLevel('signal');
+      const start = this.previous();
+      const name = this.consume(TokenType.Identifier, 'Expected signal name.');
+      this.consume(TokenType.OpenParen, 'Expected ( after signal name.');
+      const parameters = this.parameters(TokenType.CloseParen);
+      this.consume(TokenType.CloseParen, 'Expected ) after signal parameters.');
+      this.consume(TokenType.Period, 'Expected period after signal.');
+      return {
+        kind: 'signal',
+        name: name.value,
+        parameters,
+        line: start.line,
+        column: start.column,
+        span: this.span(start),
+      };
+    }
+    if (this.matchKeyword('on')) {
+      this.requireTopLevel('on');
+      const start = this.previous();
+      const event = this.consume(
+        TokenType.Identifier,
+        'Expected event or signal name.',
+      );
+      let parameters: Parameter[] = [];
+      if (this.match(TokenType.OpenParen)) {
+        parameters = this.parameters(TokenType.CloseParen);
+        this.consume(TokenType.CloseParen, 'Expected ).');
+      }
+      this.consumeDoHeader('event');
+      const body = this.blockUntil(() => this.isEndSequence('on'));
+      this.consumeEndSequence('on');
+      return {
+        kind: 'handler',
+        event: event.value,
+        parameters,
+        body,
+        line: start.line,
+        column: start.column,
+        span: this.span(start),
+      };
+    }
+    if (this.matchKeyword('emit')) {
+      const start = this.previous();
+      const name = this.consume(TokenType.Identifier, 'Expected signal name.');
+      this.consume(TokenType.OpenParen, 'Expected ( after signal.');
+      const args = this.argumentList(TokenType.CloseParen);
+      this.consume(TokenType.CloseParen, 'Expected ).');
+      this.consume(TokenType.Period, 'Expected period after emit.');
+      return {
+        kind: 'emit',
+        name: name.value,
+        args,
+        line: start.line,
+        column: start.column,
+        span: this.span(start),
+      };
+    }
     if (this.matchKeyword('import')) {
       this.requireTopLevel('import');
       const start = this.previous();
-      const path = this.consume(TokenType.String, 'Expected quoted relative module path.');
+      const path = this.consume(
+        TokenType.String,
+        'Expected quoted relative module path.',
+      );
       this.consumeKeyword('as', 'Expected as before the module namespace.');
-      const alias = this.consume(TokenType.Identifier, 'Expected module namespace.');
+      const alias = this.consume(
+        TokenType.Identifier,
+        'Expected module namespace.',
+      );
       this.consume(TokenType.Period, 'Expected period after import.');
-      return { kind: 'import', path: path.value, alias: alias.value, line: start.line, column: start.column, span: this.span(start) };
+      return {
+        kind: 'import',
+        path: path.value,
+        alias: alias.value,
+        line: start.line,
+        column: start.column,
+        span: this.span(start),
+      };
     }
     if (this.matchKeyword('public')) {
       this.requireTopLevel('public');
-      this.consumeKeyword('function', 'public currently exposes functions only.');
+      this.consumeKeyword(
+        'function',
+        'public currently exposes functions only.',
+      );
       const fn = this.functionStatement();
       if (fn.kind === 'function') fn.public = true;
       return fn;
@@ -77,91 +255,222 @@ class Parser {
       const values = this.argumentList(TokenType.CloseParen);
       this.consume(TokenType.CloseParen, 'Expected ) after print values.');
       this.consume(TokenType.Period, 'Expected a period after print(...).');
-      return { kind: 'print', values, line: start.line, column: start.column, span: this.span(start) };
+      return {
+        kind: 'print',
+        values,
+        line: start.line,
+        column: start.column,
+        span: this.span(start),
+      };
     }
 
-    if (this.check(TokenType.Identifier) && this.peekNext().type === TokenType.Equals) {
+    if (
+      this.check(TokenType.Identifier) &&
+      this.peekNext().type === TokenType.Equals
+    ) {
       const name = this.advance();
       this.advance();
       const value = this.expression();
-      this.consume(TokenType.Period, 'Expected a period at the end of the assignment.');
-      return { kind: 'assign', name: name.value, value, line: name.line, column: name.column, span: this.span(name) };
+      this.consume(
+        TokenType.Period,
+        'Expected a period at the end of the assignment.',
+      );
+      return {
+        kind: 'assign',
+        name: name.value,
+        value,
+        line: name.line,
+        column: name.column,
+        span: this.span(name),
+      };
     }
 
-    if (this.check(TokenType.Identifier) && (this.peekNext().type === TokenType.OpenParen || this.peekNext().type === TokenType.Period)) {
+    if (this.check(TokenType.Identifier)) {
       const expression = this.expression();
-      this.consume(TokenType.Period, 'Expected a period after the function call.');
-      return { kind: 'expression', expression, line: expression.line, column: expression.column, span: expression.span };
+      if (this.match(TokenType.Equals)) {
+        if (!['identifier', 'member', 'index'].includes(expression.kind))
+          throw new LanguageError(
+            'Invalid assignment target.',
+            expression.line,
+            expression.column,
+            expression.span,
+          );
+        const value = this.expression();
+        this.consume(TokenType.Period, 'Expected period after assignment.');
+        return {
+          kind: 'set',
+          target: expression,
+          value,
+          line: expression.line,
+          column: expression.column,
+          span: expression.span,
+        };
+      }
+      this.consume(
+        TokenType.Period,
+        'Expected a period after the function call.',
+      );
+      return {
+        kind: 'expression',
+        expression,
+        line: expression.line,
+        column: expression.column,
+        span: expression.span,
+      };
     }
 
     const token = this.peek();
-    throw new LanguageError('I do not understand the statement starting with "' + (token.value || 'end of file') + '".', token.line, token.column, token.span);
+    throw new LanguageError(
+      'I do not understand the statement starting with "' +
+        (token.value || 'end of file') +
+        '".',
+      token.line,
+      token.column,
+      token.span,
+    );
   }
 
   private requireTopLevel(keyword: string) {
     if (this.blockDepth > 0) {
       const token = this.previous();
-      throw new LanguageError(keyword + ' declarations must be at the top level.', token.line, token.column, token.span);
+      throw new LanguageError(
+        keyword + ' declarations must be at the top level.',
+        token.line,
+        token.column,
+        token.span,
+      );
     }
   }
 
   private buttonStatement(): Statement {
     const start = this.previous();
-    const label = this.consume(TokenType.String, 'Expected a quoted label after button.');
-    if (!label.value.trim()) throw new LanguageError('A button needs a non-empty label.', label.line, label.column, label.span);
+    const label = this.consume(
+      TokenType.String,
+      'Expected a quoted label after button.',
+    );
+    if (!label.value.trim())
+      throw new LanguageError(
+        'A button needs a non-empty label.',
+        label.line,
+        label.column,
+        label.span,
+      );
     this.consumeDoHeader('button label');
     const body = this.blockUntil(() => this.isEndSequence('button'));
     this.consumeEndSequence('button');
-    return { kind: 'button', label: label.value, body, line: start.line, column: start.column, span: this.span(start) };
+    return {
+      kind: 'button',
+      label: label.value,
+      body,
+      line: start.line,
+      column: start.column,
+      span: this.span(start),
+    };
   }
 
   private enumStatement(): Statement {
     const start = this.previous();
-    const name = this.consume(TokenType.Identifier, 'Expected an enum name after enum.');
+    const name = this.consume(
+      TokenType.Identifier,
+      'Expected an enum name after enum.',
+    );
     this.consume(TokenType.OpenBracket, 'Expected [ after the enum name.');
     const values: string[] = [];
     if (!this.check(TokenType.CloseBracket)) {
       do {
-        const value = this.consume(TokenType.Identifier, 'Enum entries must be simple names.');
-        if (values.includes(value.value)) throw new LanguageError('Enum value "' + value.value + '" is duplicated.', value.line, value.column, value.span);
+        const value = this.consume(
+          TokenType.Identifier,
+          'Enum entries must be simple names.',
+        );
+        if (values.includes(value.value))
+          throw new LanguageError(
+            'Enum value "' + value.value + '" is duplicated.',
+            value.line,
+            value.column,
+            value.span,
+          );
         values.push(value.value);
       } while (this.match(TokenType.Comma));
     }
     this.consume(TokenType.CloseBracket, 'Expected ] after enum entries.');
-    this.consume(TokenType.Period, 'Expected a period after the enum declaration.');
-    if (!values.length) throw new LanguageError('An enum needs at least one value.', name.line, name.column, name.span);
-    return { kind: 'enum', name: name.value, values, line: start.line, column: start.column, span: this.span(start) };
+    this.consume(
+      TokenType.Period,
+      'Expected a period after the enum declaration.',
+    );
+    if (!values.length)
+      throw new LanguageError(
+        'An enum needs at least one value.',
+        name.line,
+        name.column,
+        name.span,
+      );
+    return {
+      kind: 'enum',
+      name: name.value,
+      values,
+      line: start.line,
+      column: start.column,
+      span: this.span(start),
+    };
   }
 
   private declaration(exposure: 'export' | 'input' | null): Statement {
     const start = exposure ? this.previous() : this.peek();
-    const type = this.consumeTypeName('Expected a type name.');
-    this.consume(TokenType.Colon, 'Typed declarations require a colon after the type, for example integer: health = 100.');
-    const name = this.consume(TokenType.Identifier, 'Expected a variable name after the colon.');
+    const type = this.typeName('Expected a type name.');
+    this.consume(
+      TokenType.Colon,
+      'Typed declarations require a colon after the type, for example integer: health = 100.',
+    );
+    const name = this.consume(
+      TokenType.Identifier,
+      'Expected a variable name after the colon.',
+    );
     this.consume(TokenType.Equals, 'Expected = after the variable name.');
     const value = this.expression();
-    this.consume(TokenType.Period, 'Expected a period at the end of the declaration.');
-    return { kind: 'declare', typeName: type.value, name: name.value, value, exposure, line: start.line, column: start.column, span: this.span(start) };
+    this.consume(
+      TokenType.Period,
+      'Expected a period at the end of the declaration.',
+    );
+    return {
+      kind: 'declare',
+      typeName: type.value,
+      name: name.value,
+      value,
+      exposure,
+      line: start.line,
+      column: start.column,
+      span: this.span(start),
+    };
   }
 
   private functionStatement(): Statement {
     const start = this.previous();
-    const name = this.consume(TokenType.Identifier, 'Expected a function name.');
+    const name = this.consume(
+      TokenType.Identifier,
+      'Expected a function name.',
+    );
     this.consume(TokenType.OpenParen, 'Expected ( after the function name.');
-    const parameters: Parameter[] = [];
-    if (!this.check(TokenType.CloseParen)) {
-      do {
-        const type = this.consumeTypeName('Expected a parameter type.');
-        this.consume(TokenType.Colon, 'Function parameters require a colon between type and name.');
-        const parameterName = this.consume(TokenType.Identifier, 'Expected a parameter name.');
-        parameters.push({ typeName: type.value, name: parameterName.value, line: parameterName.line, column: parameterName.column, span: this.span(type) });
-      } while (this.match(TokenType.Comma));
-    }
+    const parameters = this.parameters(TokenType.CloseParen);
     this.consume(TokenType.CloseParen, 'Expected ) after the parameters.');
-    this.consume(TokenType.Period, 'Expected a period after the function signature.');
+    const returnType = this.matchKeyword('returns')
+      ? this.typeName('Expected return type.').value
+      : undefined;
+    this.consume(
+      TokenType.Period,
+      'Expected a period after the function signature.',
+    );
     const body = this.blockUntil(() => this.isEndSequence('function'));
     this.consumeEndSequence('function');
-    return { kind: 'function', name: name.value, parameters, body, line: start.line, column: start.column, span: this.span(start) };
+    return {
+      kind: 'function',
+      name: name.value,
+      parameters,
+      returnType,
+      body,
+      line: start.line,
+      column: start.column,
+      span: this.span(start),
+    };
   }
 
   private ifStatement(): Statement {
@@ -169,12 +478,28 @@ class Parser {
     const branches: IfBranch[] = [];
     const firstCondition = this.expression();
     this.consumeDoHeader('if condition');
-    branches.push({ condition: firstCondition, body: this.blockUntil(() => this.checkKeyword('elif') || this.checkKeyword('else') || this.isEndSequence('if')) });
+    branches.push({
+      condition: firstCondition,
+      body: this.blockUntil(
+        () =>
+          this.checkKeyword('elif') ||
+          this.checkKeyword('else') ||
+          this.isEndSequence('if'),
+      ),
+    });
 
     while (this.matchKeyword('elif')) {
       const condition = this.expression();
       this.consumeDoHeader('elif condition');
-      branches.push({ condition, body: this.blockUntil(() => this.checkKeyword('elif') || this.checkKeyword('else') || this.isEndSequence('if')) });
+      branches.push({
+        condition,
+        body: this.blockUntil(
+          () =>
+            this.checkKeyword('elif') ||
+            this.checkKeyword('else') ||
+            this.isEndSequence('if'),
+        ),
+      });
     }
 
     let elseBody: Statement[] | null = null;
@@ -186,7 +511,14 @@ class Parser {
     }
 
     this.consumeEndSequence('if');
-    return { kind: 'if', branches, elseBody, line: start.line, column: start.column, span: this.span(start) };
+    return {
+      kind: 'if',
+      branches,
+      elseBody,
+      line: start.line,
+      column: start.column,
+      span: this.span(start),
+    };
   }
 
   private whileStatement(): Statement {
@@ -195,20 +527,38 @@ class Parser {
     this.consumeDoHeader('while condition');
     const body = this.blockUntil(() => this.isEndSequence('while'));
     this.consumeEndSequence('while');
-    return { kind: 'while', condition, body, line: start.line, column: start.column, span: this.span(start) };
+    return {
+      kind: 'while',
+      condition,
+      body,
+      line: start.line,
+      column: start.column,
+      span: this.span(start),
+    };
   }
 
   private forStatement(): Statement {
     const start = this.previous();
 
     if (this.matchKeyword('each')) {
-      const item = this.consume(TokenType.Identifier, 'Expected a loop variable after for each.');
+      const item = this.consume(
+        TokenType.Identifier,
+        'Expected a loop variable after for each.',
+      );
       this.consumeKeyword('in', 'Expected in after the loop variable.');
       const iterable = this.expression();
       this.consumeDoHeader('for each loop');
       const body = this.blockUntil(() => this.isEndSequence('for'));
       this.consumeEndSequence('for');
-      return { kind: 'forEach', itemName: item.value, iterable, body, line: start.line, column: start.column, span: this.span(start) };
+      return {
+        kind: 'forEach',
+        itemName: item.value,
+        iterable,
+        body,
+        line: start.line,
+        column: start.column,
+        span: this.span(start),
+      };
     }
 
     if (
@@ -218,7 +568,10 @@ class Parser {
     ) {
       const item = this.advance();
       this.consumeKeyword('in', 'Expected in after the loop variable.');
-      const range = this.consumeKeyword('range', 'Expected range(...) after in.');
+      const range = this.consumeKeyword(
+        'range',
+        'Expected range(...) after in.',
+      );
       this.consume(TokenType.OpenParen, 'Expected ( after range.');
       const args = this.argumentList(TokenType.CloseParen);
       this.consume(TokenType.CloseParen, 'Expected ) after range arguments.');
@@ -227,18 +580,34 @@ class Parser {
           'range expects 1 to 3 arguments: range(stop), range(start, stop), or range(start, stop, step).',
           range.line,
           range.column,
-          range.span
+          range.span,
         );
       }
       this.consumeDoHeader('range loop');
       const body = this.blockUntil(() => this.isEndSequence('for'));
       this.consumeEndSequence('for');
-      return { kind: 'forPythonRange', itemName: item.value, args, body, line: start.line, column: start.column, span: this.span(start) };
+      return {
+        kind: 'forPythonRange',
+        itemName: item.value,
+        args,
+        body,
+        line: start.line,
+        column: start.column,
+        span: this.span(start),
+      };
     }
 
-    const type = this.consumeTypeName('Expected each, an inferred range loop, or a typed range variable after for.');
-    this.consume(TokenType.Colon, 'Range for loops require a colon after the variable type.');
-    const item = this.consume(TokenType.Identifier, 'Expected a range loop variable.');
+    const type = this.typeName(
+      'Expected each, an inferred range loop, or a typed range variable after for.',
+    );
+    this.consume(
+      TokenType.Colon,
+      'Range for loops require a colon after the variable type.',
+    );
+    const item = this.consume(
+      TokenType.Identifier,
+      'Expected a range loop variable.',
+    );
     this.consumeKeyword('from', 'Expected from in the range loop.');
     const from = this.expression();
     this.consumeKeyword('to', 'Expected to in the range loop.');
@@ -248,14 +617,31 @@ class Parser {
     this.consumeDoHeader('for loop');
     const body = this.blockUntil(() => this.isEndSequence('for'));
     this.consumeEndSequence('for');
-    return { kind: 'forRange', typeName: type.value, itemName: item.value, start: from, end: to, step, body, line: start.line, column: start.column, span: this.span(start) };
+    return {
+      kind: 'forRange',
+      typeName: type.value,
+      itemName: item.value,
+      start: from,
+      end: to,
+      step,
+      body,
+      line: start.line,
+      column: start.column,
+      span: this.span(start),
+    };
   }
 
   private returnStatement(): Statement {
     const start = this.previous();
     const value = this.check(TokenType.Period) ? null : this.expression();
     this.consume(TokenType.Period, 'Expected a period after return.');
-    return { kind: 'return', value, line: start.line, column: start.column, span: this.span(start) };
+    return {
+      kind: 'return',
+      value,
+      line: start.line,
+      column: start.column,
+      span: this.span(start),
+    };
   }
 
   private blockUntil(stop: () => boolean): Statement[] {
@@ -264,7 +650,12 @@ class Parser {
     while (!stop()) {
       if (this.check(TokenType.EndOfFile)) {
         const token = this.peek();
-        throw new LanguageError('Reached the end of the file before this block was closed.', token.line, token.column, token.span);
+        throw new LanguageError(
+          'Reached the end of the file before this block was closed.',
+          token.line,
+          token.column,
+          token.span,
+        );
       }
       statements.push(this.statement());
     }
@@ -283,7 +674,15 @@ class Parser {
     let expression = this.andExpression();
     while (this.matchKeyword('or')) {
       const operator = this.previous();
-      expression = { kind: 'binary', operator: 'or', left: expression, right: this.andExpression(), line: operator.line, column: operator.column, span: this.span(operator) };
+      expression = {
+        kind: 'binary',
+        operator: 'or',
+        left: expression,
+        right: this.andExpression(),
+        line: operator.line,
+        column: operator.column,
+        span: this.span(operator),
+      };
     }
     return expression;
   }
@@ -292,7 +691,15 @@ class Parser {
     let expression = this.comparison();
     while (this.matchKeyword('and')) {
       const operator = this.previous();
-      expression = { kind: 'binary', operator: 'and', left: expression, right: this.comparison(), line: operator.line, column: operator.column, span: this.span(operator) };
+      expression = {
+        kind: 'binary',
+        operator: 'and',
+        left: expression,
+        right: this.comparison(),
+        line: operator.line,
+        column: operator.column,
+        span: this.span(operator),
+      };
     }
     return expression;
   }
@@ -306,7 +713,8 @@ class Parser {
 
     if (this.matchKeyword('not')) {
       operator = 'is not';
-      if (this.matchKeyword('equal')) this.consumeKeyword('to', 'Expected to after is not equal.');
+      if (this.matchKeyword('equal'))
+        this.consumeKeyword('to', 'Expected to after is not equal.');
     } else if (this.matchKeyword('equal')) {
       this.consumeKeyword('to', 'Expected to after is equal.');
       operator = 'is';
@@ -328,15 +736,39 @@ class Parser {
       }
     }
 
-    return { kind: 'binary', operator, left: expression, right: this.additive(), line: operatorToken.line, column: operatorToken.column, span: this.span(operatorToken) };
+    return {
+      kind: 'binary',
+      operator,
+      left: expression,
+      right: this.additive(),
+      line: operatorToken.line,
+      column: operatorToken.column,
+      span: this.span(operatorToken),
+    };
   }
 
   private additive(): Expression {
     let expression = this.multiplicative();
-    while (this.checkKeyword('plus') || this.checkKeyword('minus') || this.check(TokenType.Plus) || this.check(TokenType.Minus)) {
+    while (
+      this.checkKeyword('plus') ||
+      this.checkKeyword('minus') ||
+      this.check(TokenType.Plus) ||
+      this.check(TokenType.Minus)
+    ) {
       const token = this.advance();
-      const operator = token.type === TokenType.Plus || token.value.toLowerCase() === 'plus' ? 'plus' : 'minus';
-      expression = { kind: 'binary', operator, left: expression, right: this.multiplicative(), line: token.line, column: token.column, span: this.span(token) };
+      const operator =
+        token.type === TokenType.Plus || token.value.toLowerCase() === 'plus'
+          ? 'plus'
+          : 'minus';
+      expression = {
+        kind: 'binary',
+        operator,
+        left: expression,
+        right: this.multiplicative(),
+        line: token.line,
+        column: token.column,
+        span: this.span(token),
+      };
     }
     return expression;
   }
@@ -344,18 +776,33 @@ class Parser {
   private multiplicative(): Expression {
     let expression = this.unary();
     while (
-      this.checkKeyword('times') || this.checkKeyword('divided') || this.checkKeyword('remainder') ||
-      this.check(TokenType.Star) || this.check(TokenType.Slash)
+      this.checkKeyword('times') ||
+      this.checkKeyword('divided') ||
+      this.checkKeyword('remainder') ||
+      this.check(TokenType.Star) ||
+      this.check(TokenType.Slash)
     ) {
       const token = this.advance();
       let operator: string;
-      if (token.type === TokenType.Star || token.value.toLowerCase() === 'times') operator = 'times';
+      if (
+        token.type === TokenType.Star ||
+        token.value.toLowerCase() === 'times'
+      )
+        operator = 'times';
       else if (token.type === TokenType.Slash) operator = 'divided by';
       else if (token.value.toLowerCase() === 'divided') {
         this.consumeKeyword('by', 'Expected by after divided.');
         operator = 'divided by';
       } else operator = 'remainder';
-      expression = { kind: 'binary', operator, left: expression, right: this.unary(), line: token.line, column: token.column, span: this.span(token) };
+      expression = {
+        kind: 'binary',
+        operator,
+        left: expression,
+        right: this.unary(),
+        line: token.line,
+        column: token.column,
+        span: this.span(token),
+      };
     }
     return expression;
   }
@@ -363,11 +810,25 @@ class Parser {
   private unary(): Expression {
     if (this.matchKeyword('not')) {
       const token = this.previous();
-      return { kind: 'unary', operator: 'not', value: this.unary(), line: token.line, column: token.column, span: this.span(token) };
+      return {
+        kind: 'unary',
+        operator: 'not',
+        value: this.unary(),
+        line: token.line,
+        column: token.column,
+        span: this.span(token),
+      };
     }
     if (this.match(TokenType.Minus)) {
       const token = this.previous();
-      return { kind: 'unary', operator: 'negative', value: this.unary(), line: token.line, column: token.column, span: this.span(token) };
+      return {
+        kind: 'unary',
+        operator: 'negative',
+        value: this.unary(),
+        line: token.line,
+        column: token.column,
+        span: this.span(token),
+      };
     }
     return this.postfix();
   }
@@ -377,22 +838,54 @@ class Parser {
 
     while (true) {
       // Member dots must be adjacent to both identifiers. A spaced/newline dot is a terminator.
-      if (expression.kind === 'identifier' && this.check(TokenType.Period) &&
-          this.peekNext().type === TokenType.Identifier && expression.span.end.offset === this.peek().span.start.offset &&
-          this.peek().span.end.offset === this.peekNext().span.start.offset) {
+      if (
+        this.check(TokenType.Period) &&
+        this.peekNext().type === TokenType.Identifier &&
+        expression.span.end.offset === this.peek().span.start.offset &&
+        this.peek().span.end.offset === this.peekNext().span.start.offset
+      ) {
         this.advance();
         const member = this.advance();
-        expression = { ...expression, name: expression.name + '.' + member.value, span: { ...expression.span, end: member.span.end } };
+        expression = {
+          kind: 'member',
+          target: expression,
+          name: member.value,
+          line: expression.line,
+          column: expression.column,
+          span: { ...expression.span, end: member.span.end },
+        };
         continue;
       }
       if (this.match(TokenType.OpenParen)) {
-        if (expression.kind !== 'identifier') {
+        const callableName = (e: Expression): string | null =>
+          e.kind === 'identifier'
+            ? e.name
+            : e.kind === 'member' && callableName(e.target)
+              ? callableName(e.target) + '.' + e.name
+              : null;
+        const name = callableName(expression);
+        if (!name) {
           const token = this.previous();
-          throw new LanguageError('Only named functions can be called.', token.line, token.column, token.span);
+          throw new LanguageError(
+            'Only named functions can be called.',
+            token.line,
+            token.column,
+            token.span,
+          );
         }
         const args = this.argumentList(TokenType.CloseParen);
-        this.consume(TokenType.CloseParen, 'Expected ) after function arguments.');
-        expression = { kind: 'call', name: expression.name, args, line: expression.line, column: expression.column, span: { ...expression.span, end: this.previous().span.end } };
+        this.consume(
+          TokenType.CloseParen,
+          'Expected ) after function arguments.',
+        );
+        expression = {
+          kind: 'call',
+          name: name!,
+          args,
+          line: expression.line,
+          column: expression.column,
+          span: { ...expression.span, end: this.previous().span.end },
+        };
         continue;
       }
 
@@ -400,7 +893,14 @@ class Parser {
         const open = this.previous();
         const index = this.expression();
         this.consume(TokenType.CloseBracket, 'Expected ] after array index.');
-        expression = { kind: 'index', target: expression, index, line: open.line, column: open.column, span: { ...expression.span, end: this.previous().span.end } };
+        expression = {
+          kind: 'index',
+          target: expression,
+          index,
+          line: open.line,
+          column: open.column,
+          span: { ...expression.span, end: this.previous().span.end },
+        };
         continue;
       }
 
@@ -411,23 +911,56 @@ class Parser {
   private primary(): Expression {
     if (this.match(TokenType.Number)) {
       const token = this.previous();
-      return { kind: 'literal', value: Number(token.value), line: token.line, column: token.column, span: this.span(token) };
+      return {
+        kind: 'literal',
+        value: Number(token.value),
+        line: token.line,
+        column: token.column,
+        span: this.span(token),
+      };
     }
     if (this.match(TokenType.String)) {
       const token = this.previous();
-      return { kind: 'literal', value: token.value, line: token.line, column: token.column, span: this.span(token) };
+      return {
+        kind: 'literal',
+        value: token.value,
+        line: token.line,
+        column: token.column,
+        span: this.span(token),
+      };
     }
     if (this.matchKeyword('true')) {
       const token = this.previous();
-      return { kind: 'literal', value: true, line: token.line, column: token.column, span: this.span(token) };
+      return {
+        kind: 'literal',
+        value: true,
+        line: token.line,
+        column: token.column,
+        span: this.span(token),
+      };
     }
     if (this.matchKeyword('false')) {
       const token = this.previous();
-      return { kind: 'literal', value: false, line: token.line, column: token.column, span: this.span(token) };
+      return {
+        kind: 'literal',
+        value: false,
+        line: token.line,
+        column: token.column,
+        span: this.span(token),
+      };
     }
-    if (this.match(TokenType.Identifier)) {
+    if (
+      this.match(TokenType.Identifier) ||
+      (BUILTIN_FUNCTIONS.has(this.peek().value) && !!this.advance())
+    ) {
       const token = this.previous();
-      return { kind: 'identifier', name: token.value, line: token.line, column: token.column, span: this.span(token) };
+      return {
+        kind: 'identifier',
+        name: token.value,
+        line: token.line,
+        column: token.column,
+        span: this.span(token),
+      };
     }
 
     if (this.match(TokenType.OpenParen)) {
@@ -436,21 +969,61 @@ class Parser {
       return expression;
     }
 
+    if (this.match(TokenType.OpenBrace)) {
+      const start = this.previous();
+      const entries: { key: string; value: Expression }[] = [];
+      if (!this.check(TokenType.CloseBrace))
+        do {
+          const key = this.consume(
+            TokenType.String,
+            'Dictionary keys must be quoted text.',
+          );
+          if (entries.some((e) => e.key === key.value))
+            throw new LanguageError(
+              'Duplicate dictionary key.',
+              key.line,
+              key.column,
+              key.span,
+            );
+          this.consume(TokenType.Colon, 'Expected : after key.');
+          entries.push({ key: key.value, value: this.expression() });
+        } while (this.match(TokenType.Comma));
+      this.consume(TokenType.CloseBrace, 'Expected } after dictionary.');
+      return {
+        kind: 'object',
+        entries,
+        line: start.line,
+        column: start.column,
+        span: this.span(start),
+      };
+    }
     if (this.match(TokenType.OpenBracket)) {
       const open = this.previous();
       const values = this.argumentList(TokenType.CloseBracket);
       this.consume(TokenType.CloseBracket, 'Expected ] after array.');
-      return { kind: 'array', values, line: open.line, column: open.column, span: this.span(open) };
+      return {
+        kind: 'array',
+        values,
+        line: open.line,
+        column: open.column,
+        span: this.span(open),
+      };
     }
 
     const token = this.peek();
-    throw new LanguageError('Expected a value but found "' + (token.value || 'end of file') + '".', token.line, token.column, token.span);
+    throw new LanguageError(
+      'Expected a value but found "' + (token.value || 'end of file') + '".',
+      token.line,
+      token.column,
+      token.span,
+    );
   }
 
   private argumentList(endType: TokenType): Expression[] {
     const values: Expression[] = [];
     if (!this.check(endType)) {
-      do values.push(this.expression()); while (this.match(TokenType.Comma));
+      do values.push(this.expression());
+      while (this.match(TokenType.Comma));
     }
     return values;
   }
@@ -464,27 +1037,77 @@ class Parser {
   private isDeclarationStart(): boolean {
     const token = this.peek();
     const validType =
-      (token.type === TokenType.Keyword && PRIMITIVE_TYPES.has(token.value.toLowerCase())) ||
+      (token.type === TokenType.Keyword &&
+        PRIMITIVE_TYPES.has(token.value.toLowerCase())) ||
       token.type === TokenType.Identifier;
-    return validType && this.peekNext().type === TokenType.Colon;
+    return (
+      validType &&
+      (this.peekNext().type === TokenType.Colon ||
+        this.peekNext().type === TokenType.Less)
+    );
   }
 
+  private parameters(end: TokenType): Parameter[] {
+    const parameters: Parameter[] = [];
+    if (!this.check(end))
+      do {
+        const type = this.typeName('Expected parameter type.');
+        this.consume(TokenType.Colon, 'Typed parameters require a colon.');
+        const name = this.consume(
+          TokenType.Identifier,
+          'Expected parameter name.',
+        );
+        parameters.push({
+          typeName: type.value,
+          name: name.value,
+          line: type.line,
+          column: type.column,
+          span: this.span(type),
+        });
+      } while (this.match(TokenType.Comma));
+    return parameters;
+  }
+  private typeName(message: string): Token {
+    const token = this.consumeTypeName(message);
+    let value = PRIMITIVE_TYPES.has(token.value.toLowerCase())
+      ? token.value.toLowerCase()
+      : token.value;
+    if (this.match(TokenType.Less)) {
+      const types = [this.typeName('Expected collection element type.').value];
+      while (this.match(TokenType.Comma))
+        types.push(this.typeName('Expected type.').value);
+      this.consume(TokenType.Greater, 'Expected > after collection type.');
+      value += '<' + types.join(',') + '>';
+    }
+    return { ...token, value, span: this.span(token) };
+  }
   private consumeTypeName(message: string): Token {
     const token = this.peek();
-    if ((token.type === TokenType.Keyword && PRIMITIVE_TYPES.has(token.value.toLowerCase())) || token.type === TokenType.Identifier) {
+    if (
+      (token.type === TokenType.Keyword &&
+        PRIMITIVE_TYPES.has(token.value.toLowerCase())) ||
+      token.type === TokenType.Identifier
+    ) {
       return this.advance();
     }
     throw new LanguageError(message, token.line, token.column, token.span);
   }
 
   private isEndSequence(keyword: string): boolean {
-    return this.checkKeyword('end') && this.peekNext().type === TokenType.Keyword && this.peekNext().value.toLowerCase() === keyword;
+    return (
+      this.checkKeyword('end') &&
+      this.peekNext().type === TokenType.Keyword &&
+      this.peekNext().value.toLowerCase() === keyword
+    );
   }
 
   private consumeEndSequence(keyword: string) {
     this.consumeKeyword('end', 'Expected end ' + keyword + '.');
     this.consumeKeyword(keyword, 'Expected ' + keyword + ' after end.');
-    this.consume(TokenType.Period, 'Expected a period after end ' + keyword + '.');
+    this.consume(
+      TokenType.Period,
+      'Expected a period after end ' + keyword + '.',
+    );
   }
 
   private match(type: TokenType): boolean {
@@ -517,7 +1140,9 @@ class Parser {
 
   private checkKeyword(keyword: string): boolean {
     const token = this.peek();
-    return token.type === TokenType.Keyword && token.value.toLowerCase() === keyword;
+    return (
+      token.type === TokenType.Keyword && token.value.toLowerCase() === keyword
+    );
   }
 
   private advance(): Token {

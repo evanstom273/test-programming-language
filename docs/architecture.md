@@ -189,3 +189,7 @@ If a React component needs to know how a Language Lab statement executes, that l
 Language behavior belongs in language/runtime services.
 Workspace behavior belongs in workspace services.
 Rendering belongs in the host.
+
+## Typed data and events extension
+
+See [GDScript-inspired features](gdscript-inspiration.md) for supported annotations, float/collection/record/resource controls, lifecycle events, signals, and worker scheduling. These extend the existing export/input/button model.

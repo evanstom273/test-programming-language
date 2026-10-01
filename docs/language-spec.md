@@ -21,7 +21,7 @@ Semicolons are not part of the language.
 
 ## Identifiers
 
-Identifiers begin with an ASCII letter and may continue with ASCII letters or digits.
+Identifiers begin with an ASCII letter or underscore and may continue with ASCII letters, digits, or underscores.
 
 Preferred:
 
@@ -32,7 +32,7 @@ numberOne
 enemy2
 ~~~
 
-Underscores are not currently legal identifier characters.
+CamelCase remains the recommended convention.
 
 Keywords are recognized case-insensitively. Identifiers preserve their spelling and should use consistent casing.
 
@@ -56,13 +56,14 @@ Numeric literals may contain digits and one decimal point when digits follow the
 2.5
 ~~~
 
-The stable declared numeric primitive is currently integer. Arithmetic may produce non-integer runtime numbers, but there is not yet a public float/decimal declaration type.
+Numeric declaration types are `integer` (finite whole number) and `float` (finite double, including whole values).
 
 ## Current keywords
 
 ~~~text
 import as public
-integer text array boolean
+integer float text array dictionary boolean vector2 vector3 color resource
+constant record signal emit on returns
 print export input button enum
 function return
 if elif else end do
@@ -187,7 +188,7 @@ Indexes are zero-based, must be integers, and must be in range.
 
 Arrays may currently contain mixed language values.
 
-Indexed assignment such as items[0] = value is not current syntax.
+Indexed assignment such as `items[0] = value.` is supported with bounds/type checks and value-copy semantics.
 
 ## Output
 
@@ -315,7 +316,7 @@ return.
 
 Return outside a function is an error.
 
-Function return types are not yet declared in signatures.
+Optional return annotations follow parameters: `function double(integer: value) returns integer.`. All return paths, including implicit empty returns, are runtime-validated.
 
 ## Built-in random integer
 
@@ -428,9 +429,7 @@ The IDE runs program execution in a Web Worker. Stop/timeout can hard-terminate 
 Do not generate these as working syntax until implementation lands:
 
 - comments;
-- classes or objects;
-- records/maps;
-- a stable float/decimal declaration type;
+- classes, inheritance, or scene trees;
 - async/await;
 - try/catch;
 - break/continue;
@@ -438,3 +437,7 @@ Do not generate these as working syntax until implementation lands:
 - function values/lambdas;
 - arbitrary DOM/browser access;
 - remote/package imports.
+
+## Annotations, data, resources, and events
+
+[GDScript-inspired features](gdscript-inspiration.md) is part of this language contract. It specifies declaration hints, constants, typed collections, records, return types, dot disambiguation, resource identity, lifecycle/signal ordering, value semantics, and graphics primitives.

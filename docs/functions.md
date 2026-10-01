@@ -49,7 +49,7 @@ return.
 
 return is only valid while executing a function.
 
-Function signatures do not yet declare return types.
+Function signatures may declare return types: `function double(integer: value) returns integer.`. Typed functions validate the result, including implicit empty returns. Omitted annotations preserve existing behavior.
 
 ## Function scope
 
@@ -159,3 +159,7 @@ The language does not yet provide:
 - closures as values;
 - callbacks as first-class values;
 - generic method calls on arbitrary objects.
+
+## Data and graphics built-ins
+
+`Resource`, `loadResource`, `parseJSON`, `toJSON`, `Vector2`, `Vector3`, `Color`, `length`, `normalized`, and `dot` are documented in [GDScript-inspired features](gdscript-inspiration.md). These names are reserved and cannot be redefined.

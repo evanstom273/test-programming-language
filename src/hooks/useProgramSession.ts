@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { LanguageError } from '../language/lexer';
 import type { ProgramSnapshot } from '../language/program';
-import type { ExportValue } from '../language/ast';
+import type { ExportValue, Value } from '../language/ast';
 import type { ProjectSnapshot } from '../workspace/model';
 import type { RuntimeCommand } from '../runtime/protocol';
 import { RuntimeClient } from '../runtime/client';
@@ -54,6 +54,7 @@ export function useProgramSession(project: ProjectSnapshot | null) {
   >('idle');
   const epoch = useRef(0);
   const sequence = useRef(0);
+  const foregroundRequests = useRef(0);
   const activeProject = useRef<string>();
   const stale = runRevision !== null && revision !== runRevision;
   useEffect(
@@ -72,6 +73,8 @@ export function useProgramSession(project: ProjectSnapshot | null) {
   }, [stale, revision]);
   async function dispatch(command: RuntimeCommand, token = epoch.current) {
     const requestSequence = ++sequence.current;
+    const foreground = command.type !== 'event' || command.name !== 'update';
+    if (foreground) foregroundRequests.current++;
     try {
       const response = await client.current!.request(command);
       if (token !== epoch.current) return false;
@@ -87,6 +90,8 @@ export function useProgramSession(project: ProjectSnapshot | null) {
         setStatus('stopped');
       }
       return false;
+    } finally {
+      if (foreground) foregroundRequests.current--;
     }
   }
   function run(replacement?: ProjectSnapshot) {
@@ -110,6 +115,43 @@ export function useProgramSession(project: ProjectSnapshot | null) {
     setError('Program stopped. Press Run to restart.');
   }
   const usable = !stale && status === 'ready';
+  const updates = !!snapshot?.events.includes('update');
+  // One awaited tick at a time: no frame backlog, and all execution stays in the worker.
+  useEffect(() => {
+    if (!usable || !updates || pendingInputs > 0 || error) return;
+    let disposed = false;
+    let timer: ReturnType<typeof setTimeout>;
+    let previous = performance.now();
+    const token = epoch.current;
+    const tick = async () => {
+      if (disposed || token !== epoch.current) return;
+      if (foregroundRequests.current > 0) {
+        previous = performance.now();
+        timer = setTimeout(() => void tick(), 33);
+        return;
+      }
+      const now = performance.now();
+      const delta = Math.min(0.25, (now - previous) / 1000);
+      previous = now;
+      if (
+        !(await dispatch(
+          { type: 'event', name: 'update', args: [delta] },
+          token,
+        ))
+      )
+        return;
+      if (!disposed) timer = setTimeout(() => void tick(), 33);
+    };
+    timer = setTimeout(() => void tick(), 33);
+    return () => {
+      disposed = true;
+      clearTimeout(timer);
+    };
+  }, [usable, updates, pendingInputs, error, generation]);
+  function sendEvent(name: string, args: Value[]) {
+    if (usable && snapshot?.events.includes(name))
+      void dispatch({ type: 'event', name, args });
+  }
   function pressButton(id: string) {
     if (!usable) return;
     setStatus('running');
@@ -142,6 +184,7 @@ export function useProgramSession(project: ProjectSnapshot | null) {
     stop,
     setInput,
     pressButton,
+    sendEvent,
     clearOutput,
   };
 }

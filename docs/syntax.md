@@ -280,3 +280,7 @@ Reasons:
 - underscores are not current identifier syntax;
 - comparisons use supported English forms;
 - Python-style range keeps Language Lab's , do. and end for. block syntax.
+
+## Typed data and events extension
+
+See [GDScript-inspired features](gdscript-inspiration.md) for supported annotations, float/collection/record/resource controls, lifecycle events, signals, and worker scheduling. These extend the existing export/input/button model.

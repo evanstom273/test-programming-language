@@ -1,0 +1,68 @@
+enum Action [heal, damage].
+record Player [text: name, integer: health, array<text>: inventory].
+
+@group("Configuration")
+@label("Game title")
+export text: title = "Language Lab Adventure".
+
+@group("Configuration")
+@file("*.json")
+export resource: playerResource = Resource("assets/player.json").
+
+@group("Player")
+@range(1, 10, 1)
+@help("How much health changes per action.")
+input integer: amount = 5.
+
+@group("Player")
+input Action: action = heal.
+
+@group("Player")
+@range(0, 10, 0.5)
+input float: speed = 2.5.
+
+@group("Presentation")
+@multiline
+@placeholder("Write a note")
+input text: notes = "Ready to explore.\nTap Apply to begin.".
+
+@group("Presentation")
+input color: tint = Color(0.2, 0.6, 1).
+
+constant integer: maximumHealth = 100.
+Player: player = loadResource(playerResource).
+vector2: direction = normalized(Vector2(3, 4)).
+vector2: position = Vector2(0, 0).
+dictionary<text,integer>: counters = {"actions": 0}.
+
+signal healthChanged(integer: health).
+
+function clampHealth(integer: health) returns integer.
+    if health is greater than maximumHealth, do.
+        return maximumHealth.
+    elif health is less than 0, do.
+        return 0.
+    else, do.
+        return health.
+    end if.
+end function.
+
+on start, do.
+    print(title, player.name, "health", player.health).
+end on.
+
+on healthChanged(integer: health), do.
+    print("Health", health, "position", position, "tint", tint).
+end on.
+
+button "Apply", do.
+    if action is heal, do.
+        player.health = clampHealth(player.health + amount).
+    else, do.
+        player.health = clampHealth(player.health - amount).
+    end if.
+    position = position + direction * speed.
+    counters["actions"] = counters["actions"] + 1.
+    emit healthChanged(player.health).
+    print("Action", counters["actions"], notes).
+end button.
