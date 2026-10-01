@@ -1,0 +1,96 @@
+{
+  "name": "language-lab",
+  "displayName": "Language Lab",
+  "description": "Language Lab editing, project diagnostics and interactive applications.",
+  "version": "0.1.0",
+  "publisher": "language-lab-local",
+  "license": "UNLICENSED",
+  "engines": {
+    "vscode": "^1.96.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/evanstom273/test-programming-language"
+  },
+  "main": "./dist/extension.cjs",
+  "extensionKind": [
+    "workspace"
+  ],
+  "activationEvents": [
+    "onLanguage:langlab"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "Editing and diagnostics are available. Run and export require a trusted workspace.",
+      "restrictedConfigurations": []
+    },
+    "virtualWorkspaces": false
+  },
+  "contributes": {
+    "languages": [
+      {
+        "id": "langlab",
+        "aliases": [
+          "Language Lab",
+          "langlab"
+        ],
+        "extensions": [
+          ".lang"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "langlab",
+        "scopeName": "source.langlab",
+        "path": "./syntaxes/langlab.tmLanguage.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "langlab.run",
+        "title": "Language Lab: Run Project / File"
+      },
+      {
+        "command": "langlab.stop",
+        "title": "Language Lab: Stop Application"
+      },
+      {
+        "command": "langlab.exportHTML",
+        "title": "Language Lab: Export Standalone HTML"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "langlab.run",
+          "when": "resourceLangId == langlab && isWorkspaceTrusted",
+          "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "langlab.run",
+          "when": "isWorkspaceTrusted"
+        },
+        {
+          "command": "langlab.exportHTML",
+          "when": "isWorkspaceTrusted"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "langlab.run",
+        "key": "ctrl+enter",
+        "mac": "cmd+enter",
+        "when": "editorTextFocus && editorLangId == langlab && isWorkspaceTrusted"
+      }
+    ]
+  }
+}

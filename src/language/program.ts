@@ -66,12 +66,21 @@ export function labelFor(name: string): string {
     .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
+export const VALUE_LIMITS = {
+  nodes: 20_000,
+  depth: 64,
+  collection: 10_000,
+  text: 65_536,
+  aggregate: 1_000_000,
+} as const;
+
 export function isLanguageValue(value: unknown): value is Value {
   const pending: { value: unknown; depth: number }[] = [{ value, depth: 0 }];
   let count = 0;
   while (pending.length) {
     const item = pending.pop()!;
-    if (++count > 20_000 || item.depth > 64) return false;
+    if (++count > VALUE_LIMITS.nodes || item.depth > VALUE_LIMITS.depth)
+      return false;
     const v = item.value;
     if (
       v === null ||
@@ -88,7 +97,7 @@ export function isLanguageValue(value: unknown): value is Value {
     )
       return false;
     const children = Array.isArray(v) ? v : Object.values(v);
-    if (children.length > 10_000) return false;
+    if (children.length > VALUE_LIMITS.collection) return false;
     for (const child of children)
       pending.push({ value: child, depth: item.depth + 1 });
   }

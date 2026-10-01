@@ -25,8 +25,12 @@ describe('scenes and rich application UI', () => {
     const session = new ProgramSession(source);
     let snapshot = session.snapshot();
     expect(snapshot.scene?.name).toBe('CharacterCreator');
-    expect(snapshot.inputs.map((field) => field.variableName)).toEqual(['name']);
-    expect(snapshot.buttons.map((button) => button.label)).toEqual(['Continue']);
+    expect(snapshot.inputs.map((field) => field.variableName)).toEqual([
+      'name',
+    ]);
+    expect(snapshot.buttons.map((button) => button.label)).toEqual([
+      'Continue',
+    ]);
     expect(snapshot.scene?.items).toContainEqual({
       kind: 'heading',
       text: 'Create Character',
@@ -92,10 +96,7 @@ describe('scenes and rich application UI', () => {
 
   it('rejects duplicate or missing scenes', () => {
     expect(
-      () =>
-        new ProgramSession(
-          'scene One. end scene. scene One. end scene.',
-        ),
+      () => new ProgramSession('scene One. end scene. scene One. end scene.'),
     ).toThrow(/already defined/);
     expect(
       () =>
@@ -113,4 +114,66 @@ describe('scenes and rich application UI', () => {
     expect(session.snapshot().inputs).toHaveLength(1);
     expect(session.snapshot().buttons).toHaveLength(1);
   });
+});
+
+it('enter fires once when start chooses scene', () => {
+  const s = new ProgramSession(
+    'integer: visits = 0. on start, do. go to Two. end on. scene One. end scene. scene Two. on enter, do. visits = visits + 1. print(visits). end on. end scene.',
+  );
+  expect(s.snapshot().output).toEqual(['1']);
+});
+it('clear output after navigation retains next printed line', () => {
+  const s = new ProgramSession(
+    'scene One. button "Next", do. print("old"). go to Two. end button. end scene. scene Two. button "Print", do. print("new"). end button. end scene.',
+  );
+  s.pressButton(s.snapshot().buttons[0].id);
+  s.clearOutput();
+  s.pressButton(s.snapshot().buttons[0].id);
+  expect(s.snapshot().output).toEqual(['new']);
+});
+it('inactive scene does not receive host event after global navigation', () => {
+  const s = new ProgramSession(
+    'on keyDown(text: key), do. go to Two. end on. scene One. on keyDown(text: key), do. print("INACTIVE ONE"). end on. end scene. scene Two. end scene.',
+  );
+  s.dispatchEvent('keyDown', ['x']);
+  expect(s.snapshot().scene?.name).toBe('Two');
+  expect(s.snapshot().output).toEqual([]);
+});
+
+it.each([
+  'print("Hello").',
+  'go to One.',
+  'if true, do. print(1). end if.',
+  'function hidden(). return 1. end function.',
+])('rejects ignored scene-root statements: %s', (statement) => {
+  expect(
+    () => new ProgramSession('scene One. ' + statement + ' end scene.'),
+  ).toThrow(/Scene bodies contain/);
+});
+it('initial navigation waits for all scene inputs and does not leave an unentered scene', () => {
+  const s = new ProgramSession(
+    'go to Two. scene One. on leave, do. print("never entered"). end on. end scene. scene Two. input integer: amount = 7. on enter, do. print(amount). end on. end scene.',
+  );
+  expect(s.snapshot().output).toEqual(['7']);
+});
+it('drops remaining handlers from the previous scene even after returning to it', () => {
+  const s = new ProgramSession(
+    'scene One. on keyDown(text: key), do. go to Two. end on. on keyDown(text: key), do. print("old event"). end on. end scene. scene Two. on enter, do. go to One. end on. end scene.',
+  );
+  s.dispatchEvent('keyDown', ['x']);
+  expect(s.snapshot().scene?.name).toBe('One');
+  expect(s.snapshot().output).toEqual([]);
+});
+it('preserves loop control and typed-return analysis inside scene handlers', () => {
+  const s = new ProgramSession(
+    'scene One. button "Go", do. for i in range(3), do. if i is 1, do. continue. end if. print(i). end for. end button. end scene.',
+  );
+  s.pressButton(s.snapshot().buttons[0].id);
+  expect(s.snapshot().output).toEqual(['0', '2']);
+  expect(
+    () =>
+      new ProgramSession(
+        'scene One. button "Go", do. break. end button. end scene.',
+      ),
+  ).toThrow(/inside a loop/);
 });

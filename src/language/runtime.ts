@@ -1,3 +1,4 @@
+import { VALUE_LIMITS } from './program';
 import {
   matchesType,
   isObject,
@@ -130,10 +131,9 @@ interface RuntimeContext {
   navigate: (name: string) => void;
 }
 
-interface ReturnSignal {
-  returned: true;
-  value: Value;
-}
+type ReturnSignal =
+  | { returned: true; value: Value }
+  | { returned: false; control: 'break' | 'continue'; value?: never };
 
 const MAX_STEPS = 100_000;
 
@@ -163,12 +163,12 @@ export class RuntimeSession {
       context: RuntimeContext;
     }
   >();
-  private activeScene:
-    | {
-        statement: Extract<Statement, { kind: 'scene' }>;
-        context: RuntimeContext;
-      }
-    | null = null;
+  private activeScene: {
+    statement: Extract<Statement, { kind: 'scene' }>;
+    context: RuntimeContext;
+  } | null = null;
+  private initializing = true;
+  private sceneEpoch = 0;
   private sceneOutputStart = 0;
   private sceneTransitions = 0;
   private readonly queue: {
@@ -177,6 +177,7 @@ export class RuntimeSession {
     args: Value[];
     payloadSize: number;
     handlers?: Statement[];
+    sceneEpoch?: number;
   }[] = [];
   private eventCount = 0;
   private queuedPayloadSize = 0;
@@ -280,6 +281,7 @@ export class RuntimeSession {
       for (const context of this.contexts.values())
         this.enqueue(context, 'start', []);
     });
+    this.initializing = false;
     if (this.activeScene)
       this.action(() => this.runSceneHandlers(this.activeScene!, 'enter', []));
   }
@@ -333,6 +335,7 @@ export class RuntimeSession {
       args: structuredClone(args),
       payloadSize,
       handlers,
+      sceneEpoch: handlers ? this.sceneEpoch : undefined,
     });
   }
   private drainEvents() {
@@ -340,6 +343,11 @@ export class RuntimeSession {
       const event = this.queue.shift()!;
       this.queuedPayloadSize -= event.payloadSize;
       for (const handler of event.handlers ?? event.context.module.statements) {
+        if (
+          event.sceneEpoch !== undefined &&
+          event.sceneEpoch !== this.sceneEpoch
+        )
+          break;
         if (handler.kind !== 'handler' || handler.event !== event.event)
           continue;
         const env = new Environment(event.context.globals);
@@ -439,6 +447,10 @@ export class RuntimeSession {
         1,
         this.shared.lastSpan,
       );
+    if (this.initializing) {
+      this.activeScene = next;
+      return;
+    }
     if (this.activeScene?.statement.name === name) return;
     if (++this.sceneTransitions > 64)
       throw new LanguageError(
@@ -447,9 +459,9 @@ export class RuntimeSession {
         1,
         this.shared.lastSpan,
       );
-    if (this.activeScene)
-      this.runSceneHandlers(this.activeScene, 'leave', []);
+    if (this.activeScene) this.runSceneHandlers(this.activeScene, 'leave', []);
     this.activeScene = next;
+    this.sceneEpoch++;
     this.sceneOutputStart = this.shared.output.length;
     this.runSceneHandlers(next, 'enter', []);
   }
@@ -528,12 +540,10 @@ export class RuntimeSession {
     });
   }
 
-  private sceneItems(
-    scene: {
-      statement: Extract<Statement, { kind: 'scene' }>;
-      context: RuntimeContext;
-    },
-  ): ProgramSceneItem[] {
+  private sceneItems(scene: {
+    statement: Extract<Statement, { kind: 'scene' }>;
+    context: RuntimeContext;
+  }): ProgramSceneItem[] {
     const items: ProgramSceneItem[] = [];
     for (const statement of scene.statement.body) {
       if (statement.kind === 'heading') {
@@ -549,11 +559,7 @@ export class RuntimeSession {
           kind: 'stat',
           label: statement.label,
           value: format(
-            readUiValue(
-              statement.value,
-              scene.context.globals,
-              scene.context,
-            ),
+            readUiValue(statement.value, scene.context.globals, scene.context),
           ),
         });
         continue;
@@ -645,6 +651,7 @@ export class RuntimeSession {
     );
   }
   clearOutput(): void {
+    this.sceneOutputStart = 0;
     this.shared.output = [];
     this.shared.outputBytes = 0;
     this.shared.truncated = false;
@@ -950,6 +957,9 @@ function executeStatements(
       continue;
     }
 
+    if (statement.kind === 'break' || statement.kind === 'continue')
+      return { returned: false, control: statement.kind };
+
     if (statement.kind === 'return') {
       if (topLevel)
         throw new LanguageError(
@@ -1012,7 +1022,8 @@ function executeStatements(
           context,
           topLevel,
         );
-        if (result) return result;
+        if (result?.returned) return result;
+        if (result && result.control === 'break') break;
       }
       continue;
     }
@@ -1043,7 +1054,8 @@ function executeStatements(
           context,
           topLevel,
         );
-        if (result) return result;
+        if (result?.returned) return result;
+        if (result && result.control === 'break') break;
       }
       continue;
     }
@@ -1093,7 +1105,8 @@ function executeStatements(
           context,
           topLevel,
         );
-        if (result) return result;
+        if (result?.returned) return result;
+        if (result && result.control === 'break') break;
       }
     }
 
@@ -1150,7 +1163,8 @@ function executeStatements(
           context,
           topLevel,
         );
-        if (result) return result;
+        if (result?.returned) return result;
+        if (result && result.control === 'break') break;
       }
       continue;
     }
@@ -1749,10 +1763,13 @@ function readUiValue(
       expression.left.line,
       expression.left.column,
     );
-    return left && asBoolean(
-      readUiValue(expression.right, env, context),
-      expression.right.line,
-      expression.right.column,
+    return (
+      left &&
+      asBoolean(
+        readUiValue(expression.right, env, context),
+        expression.right.line,
+        expression.right.column,
+      )
     );
   }
   if (expression.operator === 'or') {
@@ -1761,32 +1778,66 @@ function readUiValue(
       expression.left.line,
       expression.left.column,
     );
-    return left || asBoolean(
-      readUiValue(expression.right, env, context),
-      expression.right.line,
-      expression.right.column,
+    return (
+      left ||
+      asBoolean(
+        readUiValue(expression.right, env, context),
+        expression.right.line,
+        expression.right.column,
+      )
     );
   }
   const left = readUiValue(expression.left, env, context);
   const right = readUiValue(expression.right, env, context);
   if (expression.operator === 'plus') {
-    if (typeof left === 'string' || typeof right === 'string') return format(left) + format(right);
+    if (typeof left === 'string' || typeof right === 'string')
+      return format(left) + format(right);
     return numberOperation(left, right, (a, b) => a + b, 'plus', expression);
   }
-  if (expression.operator === 'minus') return numberOperation(left, right, (a, b) => a - b, 'minus', expression);
-  if (expression.operator === 'times') return numberOperation(left, right, (a, b) => a * b, 'times', expression);
+  if (expression.operator === 'minus')
+    return numberOperation(left, right, (a, b) => a - b, 'minus', expression);
+  if (expression.operator === 'times')
+    return numberOperation(left, right, (a, b) => a * b, 'times', expression);
   if (expression.operator === 'divided by') {
-    if (right === 0) throw new LanguageError('Cannot divide by zero.', expression.line, expression.column, expression.span);
-    return numberOperation(left, right, (a, b) => a / b, 'divided by', expression);
+    if (right === 0)
+      throw new LanguageError(
+        'Cannot divide by zero.',
+        expression.line,
+        expression.column,
+        expression.span,
+      );
+    return numberOperation(
+      left,
+      right,
+      (a, b) => a / b,
+      'divided by',
+      expression,
+    );
   }
-  if (expression.operator === 'remainder') return numberOperation(left, right, (a, b) => a % b, 'remainder', expression);
+  if (expression.operator === 'remainder')
+    return numberOperation(
+      left,
+      right,
+      (a, b) => a % b,
+      'remainder',
+      expression,
+    );
   if (expression.operator === 'is') return valuesEqual(left, right);
   if (expression.operator === 'is not') return !valuesEqual(left, right);
-  if (expression.operator === 'less than') return compareNumbers(left, right, (a, b) => a < b, expression);
-  if (expression.operator === 'less than or equal to') return compareNumbers(left, right, (a, b) => a <= b, expression);
-  if (expression.operator === 'greater than') return compareNumbers(left, right, (a, b) => a > b, expression);
-  if (expression.operator === 'greater than or equal to') return compareNumbers(left, right, (a, b) => a >= b, expression);
-  throw new LanguageError('Unknown operation "' + expression.operator + '".', expression.line, expression.column, expression.span);
+  if (expression.operator === 'less than')
+    return compareNumbers(left, right, (a, b) => a < b, expression);
+  if (expression.operator === 'less than or equal to')
+    return compareNumbers(left, right, (a, b) => a <= b, expression);
+  if (expression.operator === 'greater than')
+    return compareNumbers(left, right, (a, b) => a > b, expression);
+  if (expression.operator === 'greater than or equal to')
+    return compareNumbers(left, right, (a, b) => a >= b, expression);
+  throw new LanguageError(
+    'Unknown operation "' + expression.operator + '".',
+    expression.line,
+    expression.column,
+    expression.span,
+  );
 }
 
 function format(value: Value): string {
@@ -1850,11 +1901,11 @@ function assertResourceValue(value: Value, at: Located) {
       );
     size += typeof v === 'string' ? v.length : 8;
     if (
-      size > 1_000_000 ||
-      ++count > 20_000 ||
-      depth > 64 ||
-      (typeof v === 'string' && v.length > 65_536) ||
-      (Array.isArray(v) && v.length > 10_000)
+      size > VALUE_LIMITS.aggregate ||
+      ++count > VALUE_LIMITS.nodes ||
+      depth > VALUE_LIMITS.depth ||
+      (typeof v === 'string' && v.length > VALUE_LIMITS.text) ||
+      (Array.isArray(v) && v.length > VALUE_LIMITS.collection)
     ) {
       throw new LanguageError(
         'Value exceeds runtime resource limits.',
@@ -1865,7 +1916,7 @@ function assertResourceValue(value: Value, at: Located) {
     }
     if (Array.isArray(v)) v.forEach((x) => visit(x, depth + 1));
     else if (isObject(v)) {
-      if (Object.keys(v).length > 10_000)
+      if (Object.keys(v).length > VALUE_LIMITS.collection)
         throw new LanguageError(
           'Value exceeds runtime resource limits.',
           at.line,

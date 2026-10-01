@@ -48,7 +48,7 @@ end if.
 
 Explicit end markers are required.
 
-Identifiers begin with a letter and contain letters/digits only. Prefer camelCase.
+Identifiers begin with a letter or underscore and contain letters, digits or underscores. Prefer camelCase.
 
 ## Current counting loops
 
@@ -90,7 +90,9 @@ Supported source includes:
 - named functions with typed parameters;
 - public module functions;
 - relative namespaced imports;
-- return;
+- return; break/continue inside loops;
+- # and /* */ comments, float, constants, typed collections/records, resources, signals/events;
+- text/math helpers documented in docs/coding-improvements.md;
 - arrays/indexing;
 - English comparisons and boolean logic;
 - word/symbol arithmetic;
@@ -151,8 +153,8 @@ Before presenting or committing source:
 2. verify typed declarations have colons;
 3. verify every block has its end marker;
 4. verify comparisons use supported English forms;
-5. verify identifiers contain no underscores;
-6. avoid unsupported comments;
+5. prefer camelCase identifiers;
+6. use # line comments or non-nesting /* */ block comments;
 7. use correct range endpoint semantics;
 8. keep export/input/public/internal state purposeful;
 9. validate/build/test when tooling is available.
@@ -161,14 +163,10 @@ Before presenting or committing source:
 
 - semicolons;
 - braces as block syntax;
-- underscore identifiers;
 - symbolic comparisons such as ==, !=, <, <=, >, >=;
-- comments;
-- records/classes;
+- classes/inheritance;
 - async/await;
 - try/catch;
-- break/continue;
-- float/decimal declarations;
 - remote/package imports.
 
 ## Git workflow

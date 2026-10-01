@@ -31,6 +31,8 @@ go to Arena.
 
 A transition keeps the same RuntimeSession. Persistent module variables are not reinitialized.
 
+Navigation during module initialization or `on start` selects the initial scene. Its `on enter` runs once, after all modules and scene inputs are initialized; no unentered scene receives `on leave`.
+
 The old scene's `on leave` handler runs before the active scene changes. The new scene's `on enter` handler then runs.
 
 ~~~text
@@ -103,13 +105,13 @@ end scene.
 
 Scene-local inputs are initialized once when the RuntimeSession starts. Their values persist while navigating away and back.
 
-Persistent internal state should remain at module top level. A scene may declare input controls, not arbitrary private variables.
+Persistent internal state should remain at module top level. A scene may declare input controls, not arbitrary private variables. Direct scene children must be inputs, buttons, handlers or display statements. Put executable code in `on enter` or another handler; unsupported direct statements are rejected.
 
 ## Host lifecycle events inside scenes
 
 Besides `enter` and `leave`, an active scene may handle host events such as update, keyDown, keyUp and pointerDown.
 
-Only the active scene receives its scene-local host handlers. Top-level host handlers remain global.
+Only the active scene receives its scene-local host handlers. Navigation invalidates pending handlers from the previous scene, even if navigation returns to that scene during the same event. Top-level host handlers remain global.
 
 ## Output behavior
 

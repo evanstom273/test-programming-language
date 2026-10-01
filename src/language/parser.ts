@@ -40,6 +40,15 @@ export function parseSource(source: string, fileId = 'main.lang'): Statement[] {
   return ast;
 }
 
+/** Completed top-level declarations remain useful while an editor buffer is incomplete. */
+export function parseSourcePrefix(source: string, fileId: string): Statement[] {
+  try {
+    return new Parser(tokenize(source, fileId)).parsePrefix();
+  } catch {
+    return [];
+  }
+}
+
 class Parser {
   private current = 0;
   private blockDepth = 0;
@@ -51,6 +60,18 @@ class Parser {
     const statements: Statement[] = [];
     while (!this.check(TokenType.EndOfFile)) statements.push(this.statement());
     return statements;
+  }
+
+  parsePrefix(): Statement[] {
+    const result: Statement[] = [];
+    while (!this.check(TokenType.EndOfFile)) {
+      try {
+        result.push(this.statement());
+      } catch {
+        break;
+      }
+    }
+    return result;
   }
 
   private span(start: Token) {
@@ -133,6 +154,25 @@ class Parser {
       this.consume(TokenType.Period, 'Expected period after scene name.');
       this.sceneDepth += 1;
       const body = this.blockUntil(() => this.isEndSequence('scene'));
+      for (const child of body) {
+        if (
+          ![
+            'declare',
+            'button',
+            'handler',
+            'heading',
+            'paragraph',
+            'stat',
+            'progress',
+          ].includes(child.kind)
+        )
+          throw new LanguageError(
+            'Scene bodies contain controls, display statements and handlers only. Put executable statements inside on enter or a button.',
+            child.line,
+            child.column,
+            child.span,
+          );
+      }
       this.sceneDepth -= 1;
       this.consumeEndSequence('scene');
       return {
@@ -254,43 +294,91 @@ class Parser {
     if (this.matchKeyword('go')) {
       const start = this.previous();
       this.consumeKeyword('to', 'Expected to after go.');
-      const name = this.consume(TokenType.Identifier, 'Expected scene name after go to.');
+      const name = this.consume(
+        TokenType.Identifier,
+        'Expected scene name after go to.',
+      );
       this.consume(TokenType.Period, 'Expected period after scene transition.');
-      return { kind: 'goScene', name: name.value, line: start.line, column: start.column, span: this.span(start) };
+      return {
+        kind: 'goScene',
+        name: name.value,
+        line: start.line,
+        column: start.column,
+        span: this.span(start),
+      };
     }
     if (this.matchKeyword('heading')) {
       this.requireSceneRoot('heading');
       const start = this.previous();
-      const text = this.consume(TokenType.String, 'Expected quoted heading text.');
+      const text = this.consume(
+        TokenType.String,
+        'Expected quoted heading text.',
+      );
       this.consume(TokenType.Period, 'Expected period after heading.');
-      return { kind: 'heading', text: text.value, line: start.line, column: start.column, span: this.span(start) };
+      return {
+        kind: 'heading',
+        text: text.value,
+        line: start.line,
+        column: start.column,
+        span: this.span(start),
+      };
     }
     if (this.matchKeyword('paragraph')) {
       this.requireSceneRoot('paragraph');
       const start = this.previous();
-      const text = this.consume(TokenType.String, 'Expected quoted paragraph text.');
+      const text = this.consume(
+        TokenType.String,
+        'Expected quoted paragraph text.',
+      );
       this.consume(TokenType.Period, 'Expected period after paragraph.');
-      return { kind: 'paragraph', text: text.value, line: start.line, column: start.column, span: this.span(start) };
+      return {
+        kind: 'paragraph',
+        text: text.value,
+        line: start.line,
+        column: start.column,
+        span: this.span(start),
+      };
     }
     if (this.matchKeyword('stat')) {
       this.requireSceneRoot('stat');
       const start = this.previous();
-      const label = this.consume(TokenType.String, 'Expected quoted stat label.');
+      const label = this.consume(
+        TokenType.String,
+        'Expected quoted stat label.',
+      );
       this.consume(TokenType.Comma, 'Expected comma after stat label.');
       const value = this.expression();
       this.consume(TokenType.Period, 'Expected period after stat.');
-      return { kind: 'stat', label: label.value, value, line: start.line, column: start.column, span: this.span(start) };
+      return {
+        kind: 'stat',
+        label: label.value,
+        value,
+        line: start.line,
+        column: start.column,
+        span: this.span(start),
+      };
     }
     if (this.matchKeyword('progress')) {
       this.requireSceneRoot('progress');
       const start = this.previous();
-      const label = this.consume(TokenType.String, 'Expected quoted progress label.');
+      const label = this.consume(
+        TokenType.String,
+        'Expected quoted progress label.',
+      );
       this.consume(TokenType.Comma, 'Expected comma after progress label.');
       const value = this.expression();
       this.consume(TokenType.Comma, 'Expected comma before progress maximum.');
       const maximum = this.expression();
       this.consume(TokenType.Period, 'Expected period after progress.');
-      return { kind: 'progress', label: label.value, value, maximum, line: start.line, column: start.column, span: this.span(start) };
+      return {
+        kind: 'progress',
+        label: label.value,
+        value,
+        maximum,
+        line: start.line,
+        column: start.column,
+        span: this.span(start),
+      };
     }
     if (this.matchKeyword('enum')) return this.enumStatement();
     if (this.matchKeyword('function')) return this.functionStatement();
@@ -298,6 +386,16 @@ class Parser {
     if (this.matchKeyword('while')) return this.whileStatement();
     if (this.matchKeyword('for')) return this.forStatement();
     if (this.matchKeyword('return')) return this.returnStatement();
+    if (this.matchKeyword('break') || this.matchKeyword('continue')) {
+      const token = this.previous();
+      this.consume(TokenType.Period, 'Expected . after ' + token.value + '.');
+      return {
+        kind: token.value.toLowerCase() as 'break' | 'continue',
+        line: token.line,
+        column: token.column,
+        span: this.span(token),
+      };
+    }
     if (this.matchKeyword('button')) {
       this.requireTopLevelOrScene('button');
       return this.buttonStatement();
@@ -410,7 +508,8 @@ class Parser {
     if (this.blockDepth > 0 && !this.inSceneRoot()) {
       const token = this.previous();
       throw new LanguageError(
-        keyword + ' declarations must be at the top level or directly inside a scene.',
+        keyword +
+          ' declarations must be at the top level or directly inside a scene.',
         token.line,
         token.column,
         token.span,
