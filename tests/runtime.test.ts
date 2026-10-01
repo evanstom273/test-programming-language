@@ -152,8 +152,7 @@ describe('interactive sessions', () => {
   });
 
   it('rejects return outside a function even inside button conditionals', () => {
-    const session = new ProgramSession('button "Return", do. if true, do. return 1. end if. end button.');
-    expect(() => session.pressButton('button-0')).toThrow(/inside a function/);
+    expect(() => new ProgramSession('button "Return", do. if true, do. return 1. end if. end button.')).toThrow(/inside a function/);
   });
 });
 

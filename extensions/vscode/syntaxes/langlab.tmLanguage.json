@@ -1,0 +1,51 @@
+{
+  "name": "Language Lab",
+  "scopeName": "source.langlab",
+  "patterns": [
+    {
+      "name": "comment.line.number-sign.langlab",
+      "begin": "#",
+      "end": "$"
+    },
+    {
+      "name": "comment.block.langlab",
+      "begin": "/\\*",
+      "end": "\\*/"
+    },
+    {
+      "name": "string.quoted.double.langlab",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        {
+          "name": "constant.character.escape.langlab",
+          "match": "\\\\."
+        }
+      ]
+    },
+    {
+      "name": "meta.annotation.langlab",
+      "match": "@[A-Za-z_][A-Za-z0-9_]*"
+    },
+    {
+      "name": "constant.numeric.langlab",
+      "match": "\\b[0-9]+(?:\\.[0-9]+)?\\b"
+    },
+    {
+      "name": "support.function.langlab",
+      "match": "\\b(?:abs|floor|ceil|round|min|max|clamp|lerp|trim|lower|upper|split|join|contains|size|randomInteger|Vector2|Vector3|Color|length|dot|normalized|Resource|loadResource|parseJSON|toJSON)\\b"
+    },
+    {
+      "name": "keyword.control.langlab",
+      "match": "(?i)\\b(?:resource|constant|record|signal|emit|on|returns|float|dictionary|vector2|vector3|color|import|as|public|integer|text|array|boolean|print|export|input|button|enum|function|return|break|continue|if|elif|else|end|do|while|for|each|in|from|to|step|range|plus|minus|times|divided|by|remainder|is|equal|not|less|than|greater|or|and|true|false)\\b"
+    },
+    {
+      "name": "keyword.operator.langlab",
+      "match": "[=+*/<>-]"
+    },
+    {
+      "name": "punctuation.langlab",
+      "match": "[.,:()\\[\\]{}]"
+    }
+  ]
+}

@@ -8,3 +8,7 @@ test-results/
 playwright-report/
 
 .langlab-cli/
+
+extensions/vscode/dist/
+.vscode-test/
+*.vsix

@@ -1,0 +1,26 @@
+# A small console program that also runs in VS Code.
+text: name = trim("  Lyra  ").
+array<text>: tags = split("fighter,elf", ",").
+print(upper(name), join(tags, " / ")).
+
+/* A typed function must cover every return path.
+   A loop can run zero times, so provide a fallback. */
+function firstPositive(array<integer>: values) returns integer.
+    for each value in values, do.
+        if value is greater than 0, do.
+            return value.
+        end if.
+    end for.
+    return 0.
+end function.
+
+print("First positive:", firstPositive([-3, 0, 7, 9])).
+for i in range(10), do.
+    if i is 2, do.
+        continue.
+    end if.
+    if i is 5, do.
+        break.
+    end if.
+    print(i).
+end for.

@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { standalonePlugin } from './build/standalonePlugin';
 import { VitePWA } from 'vite-plugin-pwa';
 
 const repoName = 'test-programming-language';
@@ -12,6 +13,7 @@ export default defineConfig({
   base,
   plugins: [
     react(),
+    standalonePlugin(),
     VitePWA({
       registerType: 'autoUpdate',
       manifestFilename: 'language-lab.webmanifest',

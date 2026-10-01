@@ -2,6 +2,18 @@
 
 A browser-based IDE and interpreter for an English-like, executable-pseudocode programming language.
 
+## VS Code and general coding
+
+Install the locally built extension with `npm run vscode:package` and **Install from VSIX** in VS Code. It adds project-aware diagnostics, completion, hover, definition/references, interactive App Preview, Inspector configuration and standalone HTML export. See [VS Code setup](docs/vscode.md).
+
+The language also supports `#` and `/* */` comments, `break.`/`continue.`, stronger typed-return checks and common text/math helpers. See [coding improvements](docs/coding-improvements.md).
+
+## Standalone applications
+
+Choose **Files → Project actions → Download standalone HTML** (also available in the file runner). Share the resulting HTML file: it contains the app, interpreter, controls and assets and runs offline in a browser without Language Lab or the IDE.
+
+See [Standalone HTML applications](docs/standalone-html.md) for configuration, state and mobile file-opening behavior.
+
 ## Running .lang files
 
 ```sh

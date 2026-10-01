@@ -14,8 +14,8 @@ import {
   type Located,
 } from './ast';
 import { DiagnosticError, pointSpan, type Diagnostic } from './diagnostics';
-import { LanguageError } from './lexer';
-import { parseSource } from './parser';
+import { LanguageError, tokenize } from './lexer';
+import { parseSource, parseSourcePrefix } from './parser';
 import type { ProgramField } from './program';
 import {
   deepFreeze,
@@ -60,6 +60,8 @@ export interface Program {
   }[];
 }
 export interface Analysis {
+  /** Partial binding data remains available to editor tooling when diagnostics exist. */
+  modules: ModuleDefinition[];
   program: Program | null;
   diagnostics: Diagnostic[];
   fields: ProgramField[];
@@ -120,7 +122,7 @@ export function analyzeProject(snapshot: ProjectSnapshot): Analysis {
           message: e.message,
           span: e.span ?? pointSpan(file.id),
         });
-        return;
+        statements = parseSourcePrefix(file.content, file.id);
       }
       const module: ModuleDefinition = {
         id: file.id,
@@ -159,7 +161,13 @@ export function analyzeProject(snapshot: ProjectSnapshot): Analysis {
       return module;
     };
     const entry = visit(snapshot.project.entry);
-    for (const module of modules) bindModule(module, modules, report);
+    for (const module of modules)
+      bindModule(
+        module,
+        modules,
+        report,
+        snapshot.files.find((f) => f.id === module.id)!.content,
+      );
     const resources = snapshot.files
       .filter((f) => f.kind === 'file')
       .map((f) => ({
@@ -180,7 +188,7 @@ export function analyzeProject(snapshot: ProjectSnapshot): Analysis {
       }
     const fields = modules.flatMap((m) => m.exports);
     if (!entry || diagnostics.length)
-      return { program: null, diagnostics, fields };
+      return { program: null, diagnostics, fields, modules };
     return {
       program: deepFreeze({
         version: 1,
@@ -191,10 +199,11 @@ export function analyzeProject(snapshot: ProjectSnapshot): Analysis {
       }),
       diagnostics,
       fields,
+      modules,
     };
   } catch (error) {
     report('module', 'INVALID_PROJECT', (error as Error).message);
-    return { program: null, diagnostics, fields: [] };
+    return { program: null, diagnostics, fields: [], modules };
   }
 }
 export function compileProject(snapshot: ProjectSnapshot): Program {
@@ -242,7 +251,40 @@ function bindModule(
   module: ModuleDefinition,
   modules: ModuleDefinition[],
   report: Report,
+  source: string,
 ) {
+  let tokens: ReturnType<typeof tokenize> = [];
+  try {
+    tokens = tokenize(source, module.id);
+  } catch {
+    /* lexer diagnostics already exist */
+  }
+  function callSpan(e: Extract<Expression, { kind: 'call' }>) {
+    let lo = 0,
+      hi = tokens.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (tokens[mid].span.start.offset < e.span.start.offset) lo = mid + 1;
+      else hi = mid;
+    }
+    const first = e.name.split('.')[0];
+    while (
+      lo < tokens.length &&
+      tokens[lo].span.start.offset < e.span.end.offset
+    ) {
+      const token = tokens[lo++];
+      if (token.value === first)
+        return {
+          ...token.span,
+          end: {
+            ...token.span.start,
+            offset: token.span.start.offset + e.name.length,
+            column: token.span.start.column + e.name.length,
+          },
+        };
+    }
+    return e.span;
+  }
   const globals = new Scope();
   const symbolIds = new Map<string, string>();
   const functions = new Map<string, Extract<Statement, { kind: 'function' }>>();
@@ -419,7 +461,24 @@ function bindModule(
                 ' arguments.',
               e,
             );
-          e.args.forEach((a) => expression(a, scope));
+          e.args.forEach((a, i) => {
+            const actual = expression(a, scope);
+            const expected = signature.parameters?.[i];
+            if (
+              actual &&
+              expected &&
+              PRIMITIVE_TYPES.has(actual) &&
+              PRIMITIVE_TYPES.has(expected) &&
+              actual !== expected &&
+              !(expected === 'float' && actual === 'integer')
+            )
+              report(
+                'type',
+                'ARGUMENT_TYPE',
+                e.name + ' argument ' + (i + 1) + ' expects ' + expected + '.',
+                a,
+              );
+          });
           return signature.returns || undefined;
         }
         let fn = functions.get(e.name);
@@ -436,7 +495,7 @@ function bindModule(
           module.references.push({
             symbolId:
               fn.span.fileId + ':' + fn.span.start.offset + ':' + fn.name,
-            span: e.span,
+            span: callSpan(e),
           });
         if (!fn)
           report(
@@ -464,6 +523,8 @@ function bindModule(
     inherited: Scope,
     top = false,
     returnType?: string,
+    loopDepth = 0,
+    inFunction = false,
   ) {
     const scope = new Scope(inherited);
     const local = new Set<string>();
@@ -563,6 +624,18 @@ function bindModule(
           break;
         }
         case 'assign':
+          if (scope.identities.has(s.name))
+            module.references.push({
+              symbolId: scope.identities.get(s.name)!,
+              span: {
+                ...s.span,
+                end: {
+                  ...s.span.start,
+                  offset: s.span.start.offset + s.name.length,
+                  column: s.span.start.column + s.name.length,
+                },
+              },
+            });
           if (constantIds.has(scope.identities.get(s.name) ?? ''))
             report(
               'binding',
@@ -608,7 +681,18 @@ function bindModule(
               symbol(p.name, 'parameter', p, p.typeName),
             );
           }
-          block(s.body, params, false, s.returnType);
+          block(s.body, params, false, s.returnType, 0, true);
+          if (s.returnType && !definitelyReturns(s.body))
+            report(
+              'type',
+              'MISSING_RETURN',
+              'Function "' +
+                s.name +
+                '" must return ' +
+                s.returnType +
+                ' on every path.',
+              s,
+            );
           break;
         }
         case 'button':
@@ -617,13 +701,14 @@ function bindModule(
         case 'if':
           for (const b of s.branches) {
             expression(b.condition, scope);
-            block(b.body, scope, false, returnType);
+            block(b.body, scope, false, returnType, loopDepth, inFunction);
           }
-          if (s.elseBody) block(s.elseBody, scope, false, returnType);
+          if (s.elseBody)
+            block(s.elseBody, scope, false, returnType, loopDepth, inFunction);
           break;
         case 'while':
           expression(s.condition, scope);
-          block(s.body, scope, false, returnType);
+          block(s.body, scope, false, returnType, loopDepth + 1, inFunction);
           break;
         case 'forEach':
           expression(s.iterable, scope);
@@ -634,6 +719,10 @@ function bindModule(
               'value',
               symbol(s.itemName, 'variable', s),
             ),
+            false,
+            returnType,
+            loopDepth + 1,
+            inFunction,
           );
           break;
         case 'forRange':
@@ -648,6 +737,10 @@ function bindModule(
               s.typeName,
               symbol(s.itemName, 'variable', s),
             ),
+            false,
+            returnType,
+            loopDepth + 1,
+            inFunction,
           );
           break;
         case 'forPythonRange':
@@ -668,13 +761,49 @@ function bindModule(
               'integer',
               symbol(s.itemName, 'variable', s, 'integer'),
             ),
+            false,
+            returnType,
+            loopDepth + 1,
+            inFunction,
           );
           break;
         case 'print':
           s.values.forEach((v) => expression(v, scope));
           break;
-        case 'return':
-          if (s.value) expression(s.value, scope);
+        case 'break':
+        case 'continue':
+          if (!loopDepth)
+            report(
+              'binding',
+              'LOOP_CONTROL_OUTSIDE_LOOP',
+              s.kind +
+                ' can only be used inside a loop in this function or handler.',
+              s,
+            );
+          break;
+        case 'return': {
+          if (!inFunction)
+            report(
+              'binding',
+              'RETURN_OUTSIDE_FUNCTION',
+              'return can only be used inside a function.',
+              s,
+            );
+          const returnedType = s.value ? expression(s.value, scope) : undefined;
+          if (
+            returnType &&
+            returnedType &&
+            PRIMITIVE_TYPES.has(returnedType) &&
+            PRIMITIVE_TYPES.has(returnType) &&
+            returnedType !== returnType &&
+            !(returnType === 'float' && returnedType === 'integer')
+          )
+            report(
+              'type',
+              'RETURN_TYPE',
+              'Return value does not match ' + returnType + '.',
+              s,
+            );
           if (returnType) {
             const value = s.value
               ? constant(
@@ -698,6 +827,7 @@ function bindModule(
               );
           }
           break;
+        }
         case 'expression':
           expression(s.expression, scope);
           break;
@@ -849,4 +979,20 @@ function constant(
     if (vs.every((v) => v !== undefined)) return vs as Value[];
   }
   return undefined;
+}
+
+/** Conservative flow check: loops may run zero times, so they do not prove a return. */
+function definitelyReturns(body: Statement[]): boolean {
+  for (const s of body) {
+    if (s.kind === 'return') return true;
+    if (s.kind === 'break' || s.kind === 'continue') return false;
+    if (
+      s.kind === 'if' &&
+      s.elseBody &&
+      s.branches.every((b) => definitelyReturns(b.body)) &&
+      definitelyReturns(s.elseBody)
+    )
+      return true;
+  }
+  return false;
 }

@@ -102,6 +102,7 @@ export type Statement = Located &
         body: Statement[];
       }
     | { kind: 'return'; value: Expression | null }
+    | { kind: 'break' | 'continue' }
     | { kind: 'expression'; expression: Expression }
   );
 

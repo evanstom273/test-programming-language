@@ -160,7 +160,7 @@ program.ts exposes serializable field/button/output metadata.
 
 React should render that model and dispatch actions. It should not interpret source syntax or execute AST nodes.
 
-That distinction allows future hosts such as standalone web builds, VS Code, native wrappers, or game integrations to reuse the same language core.
+That distinction lets the standalone HTML host reuse the same language core and leaves room for future VS Code, native wrapper and game hosts.
 
 ## Runtime resources
 
@@ -199,3 +199,7 @@ See [GDScript-inspired features](gdscript-inspiration.md) for supported annotati
 `runner/sourceFile.ts` validates a device file and creates a one-file project snapshot. `runtime/host.ts` owns the transport-independent command handler shared by the browser worker and Node CLI worker. `runner/capabilities.ts` detects interactive requirements from a validated Program without executing it.
 
 `Shell.tsx` lazily selects the IDE or runner, and receives dropped/OS-launched files. `runner/Runner.tsx` reuses the session and static-analysis hooks and presentation controls. Workspace storage is imported only when Save is chosen. `cli/main.ts` owns bounded file reading, a worker watchdog, diagnostics and terminal output; `cli/serve.ts` supplies the browser host and one chosen source on loopback. See [Running .lang files](running-lang-files.md) for the execution, persistence and platform contracts.
+
+## Standalone HTML target
+
+The standalone target packages a project snapshot with an application-only production host, inline worker and CSS. It shares `useProgramSession`, `RuntimeClient`, `RuntimeHost` and `ProgramOutput` with the existing hosts. The host dependency graph excludes the IDE and Dexie; the generated file requires no runtime downloads. Inspector overrides are author configuration, while saved app input overrides and mutable runtime state are excluded. See [standalone HTML](standalone-html.md).

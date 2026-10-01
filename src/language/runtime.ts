@@ -1,3 +1,4 @@
+import { VALUE_LIMITS } from './program';
 import {
   matchesType,
   isObject,
@@ -128,10 +129,9 @@ interface RuntimeContext {
   inputs: Map<string, ProgramField & Located>;
 }
 
-interface ReturnSignal {
-  returned: true;
-  value: Value;
-}
+type ReturnSignal =
+  | { returned: true; value: Value }
+  | { returned: false; control: 'break' | 'continue'; value?: never };
 
 const MAX_STEPS = 100_000;
 
@@ -710,6 +710,9 @@ function executeStatements(
       continue;
     }
 
+    if (statement.kind === 'break' || statement.kind === 'continue')
+      return { returned: false, control: statement.kind };
+
     if (statement.kind === 'return') {
       if (topLevel)
         throw new LanguageError(
@@ -772,7 +775,8 @@ function executeStatements(
           context,
           topLevel,
         );
-        if (result) return result;
+        if (result?.returned) return result;
+        if (result && result.control === 'break') break;
       }
       continue;
     }
@@ -803,7 +807,8 @@ function executeStatements(
           context,
           topLevel,
         );
-        if (result) return result;
+        if (result?.returned) return result;
+        if (result && result.control === 'break') break;
       }
       continue;
     }
@@ -853,7 +858,8 @@ function executeStatements(
           context,
           topLevel,
         );
-        if (result) return result;
+        if (result?.returned) return result;
+        if (result && result.control === 'break') break;
       }
     }
 
@@ -910,7 +916,8 @@ function executeStatements(
           context,
           topLevel,
         );
-        if (result) return result;
+        if (result?.returned) return result;
+        if (result && result.control === 'break') break;
       }
       continue;
     }
@@ -1498,11 +1505,11 @@ function assertResourceValue(value: Value, at: Located) {
       );
     size += typeof v === 'string' ? v.length : 8;
     if (
-      size > 1_000_000 ||
-      ++count > 20_000 ||
-      depth > 64 ||
-      (typeof v === 'string' && v.length > 65_536) ||
-      (Array.isArray(v) && v.length > 10_000)
+      size > VALUE_LIMITS.aggregate ||
+      ++count > VALUE_LIMITS.nodes ||
+      depth > VALUE_LIMITS.depth ||
+      (typeof v === 'string' && v.length > VALUE_LIMITS.text) ||
+      (Array.isArray(v) && v.length > VALUE_LIMITS.collection)
     ) {
       throw new LanguageError(
         'Value exceeds runtime resource limits.',
@@ -1513,7 +1520,7 @@ function assertResourceValue(value: Value, at: Located) {
     }
     if (Array.isArray(v)) v.forEach((x) => visit(x, depth + 1));
     else if (isObject(v)) {
-      if (Object.keys(v).length > 10_000)
+      if (Object.keys(v).length > VALUE_LIMITS.collection)
         throw new LanguageError(
           'Value exceeds runtime resource limits.',
           at.line,
