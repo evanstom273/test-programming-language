@@ -1,5 +1,5 @@
 import { LANG_MIME, sourceFileName } from '../runner/sourceFile';
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { X, FileCode2, Folder } from 'lucide-react';
 import type { WorkspaceView } from '../hooks/useWorkspace';
 import { workspace } from '../workspace/store';
@@ -31,6 +31,7 @@ export function ProjectExplorer({
   close?: () => void;
   onOpenRunner: () => void;
 }) {
+  const [filter, setFilter] = useState('');
   const importFile = useRef<HTMLInputElement>(null);
   const importZip = useRef<HTMLInputElement>(null);
   const { project, activeFile } = view;
@@ -238,8 +239,21 @@ export function ProjectExplorer({
                 Import file
               </button>
             </div>
+            <label className="block text-xs text-[#a8b8cd]">
+              Find a file
+              <input
+                aria-label="Filter files"
+                placeholder="File name or path…"
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                className="mt-1 min-h-11 w-full min-w-0 rounded border border-[#3b4a60] bg-[#0d1117] px-2 text-sm"
+              />
+            </label>
             <div className="space-y-1">
               {[...view.projectFiles]
+                .filter((f) =>
+                  f.path.toLowerCase().includes(filter.toLowerCase()),
+                )
                 .sort((a, b) => a.path.localeCompare(b.path))
                 .map((f) => (
                   <button

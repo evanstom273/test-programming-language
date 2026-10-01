@@ -52,6 +52,13 @@ test('Pages PWA has decodable icons and starts offline after a browser restart',
     await offline.getByRole('button', { name: 'Run', exact: true }).click();
     await expect(offline.getByRole('alert')).toHaveCount(0);
     await expect(offline.getByRole('log')).toContainText('Hello Lyra');
+    // Lazy export modules must be precached as well as the editor itself.
+    await offline.getByRole('button', { name: 'Open export', exact: true }).click();
+    const kitDownload = offline.waitForEvent('download');
+    await offline.getByRole('button', { name: 'Download Windows build kit', exact: true }).click();
+    expect((await kitDownload).suggestedFilename()).toMatch(/-windows-build-kit\.zip$/);
+    await expect(offline.getByRole('dialog', {name: 'Export project'}).getByRole('alert')).toHaveCount(0);
+
     await offline.goto(origin + base + '?runner=1');
     await expect(offline.getByRole('heading', { name: 'Language Lab Runner' })).toBeVisible();
     await offline.getByLabel('Open .lang file', { exact: true }).setInputFiles({ name: 'offline.lang', mimeType: 'text/plain', buffer: Buffer.from('input integer: n = 4. button "Offline action", do. print(n * 2). end button.') });

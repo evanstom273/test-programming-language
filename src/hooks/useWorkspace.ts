@@ -13,6 +13,7 @@ import { errorMessage } from './useProgramSession';
 
 /** Document persistence and selection are independent of runtime sessions. */
 export function useWorkspace() {
+  const [initialized, setInitialized] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [files, setFiles] = useState<ProjectFile[]>([]);
   const [projectId, setProjectId] = useState<string | null>(null);
@@ -40,8 +41,17 @@ export function useWorkspace() {
         await refresh();
         if (cancelled) return;
         const requested = new URLSearchParams(location.search).get('project');
-        setProjectId(requested ?? first?.projectId ?? null);
-        setActiveId(requested ? null : first?.id ?? null);
+        let previous: { project?: string; file?: string } = {};
+        try {
+          previous =
+            JSON.parse(localStorage.getItem('langlab.selection.v1') ?? '{}') ??
+            {};
+        } catch {
+          /* Selection is optional. */
+        }
+        setProjectId(requested ?? previous.project ?? first?.projectId ?? null);
+        setActiveId(requested ? null : (previous.file ?? first?.id ?? null));
+        setInitialized(true);
       })
       .catch((e) => setStorageError(errorMessage(e)));
     return () => {
@@ -68,6 +78,17 @@ export function useWorkspace() {
     projectFiles.find((f) => f.id === activeId) ??
     projectFiles.find((f) => f.path === project?.entry) ??
     null;
+  useEffect(() => {
+    if (!initialized || !project) return;
+    try {
+      localStorage.setItem(
+        'langlab.selection.v1',
+        JSON.stringify({ project: project.id, file: activeFile?.id }),
+      );
+    } catch {
+      /* Storage failures must not block editing. */
+    }
+  }, [initialized, project?.id, activeFile?.id]);
   const snapshot = useMemo(
     () => (project ? { project, files: projectFiles } : null),
     [project, projectFiles],

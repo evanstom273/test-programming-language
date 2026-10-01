@@ -1,189 +1,634 @@
-import { FieldGroups } from './components/FieldGroups';
-import { useState } from 'react';
-import { useWorkspace } from './hooks/useWorkspace';
-import { useProjectAnalysis } from './hooks/useProjectAnalysis';
-import { ProjectExplorer } from './components/ProjectExplorer';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import {
   Code2,
   Files,
   Play,
-  RotateCcw,
-  Save,
+  Square,
   SlidersHorizontal,
   TerminalSquare,
   Trash2,
-  X
+  RotateCcw,
+  Search,
+  Download,
+  Settings2,
+  PanelLeftClose,
+  Columns2,
+  X,
+  Command as CommandIcon,
+  CircleAlert,
 } from 'lucide-react';
-import { Editor } from './Editor';
-import { ValueControl } from './components/ValueControl';
-import { ProgramOutput } from './components/ProgramOutput';
+import { useWorkspace } from './hooks/useWorkspace';
+import { useProjectAnalysis } from './hooks/useProjectAnalysis';
 import { useProgramSession } from './hooks/useProgramSession';
+import { ProjectExplorer } from './components/ProjectExplorer';
+import { ProgramOutput } from './components/ProgramOutput';
+import { Editor, type EditorHandle } from './Editor';
+import type { ExportValue } from './language/runtime';
+import { Dialog } from './workbench/Dialog';
+import { Inspector } from './workbench/Inspector';
 import {
-  type ExportValue
-} from './language/runtime';
+  Commands,
+  Problems,
+  ProjectSearch,
+  Settings,
+  type Command,
+} from './workbench/Tools';
+import { TouchKeys } from './workbench/TouchKeys';
+import {
+  usePreferences,
+  useViewport,
+  type Layout,
+} from './workbench/preferences';
+import { ExportPanel } from './workbench/ExportPanel';
 
+type Panel =
+  | 'Explorer'
+  | 'Inspector'
+  | 'Search project'
+  | 'Commands'
+  | 'Problems'
+  | 'Settings'
+  | 'Export project';
 export default function App({ onOpenRunner }: { onOpenRunner: () => void }) {
   const view = useWorkspace();
-  const { activeFile, updateCode, saved, storageError, setStorageError } = view;
-  const [explorerOpen, setExplorerOpen] = useState(false);
-  const [inspectorOpen, setInspectorOpen] = useState(false);
-  const [consoleOpen, setConsoleOpen] = useState(true);
+  const { activeFile, saved } = view;
   const program = useProgramSession(view.snapshot);
-  const error = program.error;
-  const exportAnalysis = useProjectAnalysis(view.snapshot);
-  const run = () => { if (view.busy || program.pendingInputs > 0) return; setConsoleOpen(true); program.run(); };
-  const updateInput = (name: string, value: ExportValue) => {
-    const field = program.snapshot?.inputs.find(f => f.name === name);
-    if (!field?.fileId) return;
-    void program.setInput(name, value).then(valid => { if (valid) void view.updateOverride(field.fileId!, 'inputOverrides', field.variableName ?? field.name, value); });
-  };
-  const resetInputs = () => { void view.resetInputs().then(snapshot => { if (snapshot) program.run(snapshot); }); setConsoleOpen(true); };
-  const renderInspector = ({ mobile = false }: { mobile?: boolean }) => (
-    <aside className="flex h-full min-h-0 flex-col border-l border-[#21262d] bg-[#0d1117]">
-      <div className="flex h-11 items-center justify-between border-b border-[#21262d] px-3">
-        <div className="flex items-center gap-2">
-          <SlidersHorizontal size={15} className="text-[#8b949e]" />
-          <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8b949e]">Inspector</span>
-        </div>
-        {mobile && (
-          <button type="button" onClick={() => setInspectorOpen(false)} className="grid h-8 w-8 place-items-center rounded-md text-[#8b949e] hover:bg-[#161b22] hover:text-white" aria-label="Close inspector">
-            <X size={17} />
-          </button>
-        )}
-      </div>
-
-      <div className="ide-scrollbar min-h-0 flex-1 overflow-y-auto p-3">
-        {exportAnalysis.error ? (
-          <div className="rounded-lg border border-[#f851493d] bg-[#f8514914] p-3 text-xs leading-5 text-[#ff7b72]">
-            Fix the language error before Inspector fields can be generated.<br />
-            <span className="text-[#8b949e]">{exportAnalysis.error}</span>
-          </div>
-        ) : exportAnalysis.fields.length === 0 ? (
-          <div className="rounded-lg border border-[#21262d] bg-[#161b22] p-3 text-xs leading-5 text-[#8b949e]">
-            Nothing exported yet. Add something like <span className="font-mono text-[#c9d1d9]">export integer: score = 0.</span>
-          </div>
-        ) : (
-          <FieldGroups fields={exportAnalysis.fields}>
-            {field => {
-              const overrides = view.projectFiles.find(f => f.id === field.fileId)?.exportOverrides || {};
-              const hasOverride = Object.prototype.hasOwnProperty.call(overrides, field.name);
-              const current = hasOverride ? overrides[field.name] : field.defaultValue;
-
-              return (
-                <div key={field.fileId + field.name} className="rounded-lg border border-[#21262d] bg-[#0b0f14] p-3">
-                  {field.computedDefault && !hasOverride && <p className="mb-2 text-xs text-[#8b949e]">Default requires execution. The control below sets an override.</p>}
-                  <ValueControl
-                    field={field}
-                    value={current}
-                    onChange={(value) => view.updateOverride(field.fileId!, 'exportOverrides', field.name, value)}
-                    onReset={hasOverride ? () => view.updateOverride(field.fileId!, 'exportOverrides', field.name, undefined) : undefined}
-                    hint={field.typeName + ' · ' + (hasOverride ? 'Inspector override' : field.computedDefault ? 'Computed on Run; edit to override' : 'Code default') + ' · ' + field.path}
-                  />
-                </div>
-              );
-            }}
-          </FieldGroups>
-        )}
-      </div>
-    </aside>
+  const analysis = useProjectAnalysis(view.snapshot);
+  const [prefs, updatePrefs] = usePreferences();
+  const viewport = useViewport();
+  const wide = viewport.width >= 700;
+  const layout: Layout =
+    prefs.layout === 'split' && !wide ? 'code' : prefs.layout;
+  const [panel, setPanel] = useState<Panel | null>(null);
+  const [sidebar, setSidebar] = useState(true);
+  const [tabs, setTabs] = useState<string[]>([]);
+  const editor = useRef<EditorHandle>(null);
+  const workarea = useRef<HTMLDivElement>(null);
+  const pendingLocation = useRef<{ id: string; offset: number } | null>(null);
+  const visibleTabs = tabs.filter((id) =>
+    view.projectFiles.some((f) => f.id === id && f.kind === 'file'),
   );
+  if (activeFile?.kind === 'file' && !visibleTabs.includes(activeFile.id))
+    visibleTabs.push(activeFile.id);
 
+  useEffect(() => {
+    if (activeFile?.kind === 'file')
+      setTabs((ids) =>
+        ids.includes(activeFile.id) ? ids : [...ids, activeFile.id],
+      );
+  }, [activeFile?.id]);
+  useEffect(() => {
+    const target = pendingLocation.current;
+    if (target && target.id === activeFile?.id) {
+      editor.current?.reveal(target.offset);
+      pendingLocation.current = null;
+    }
+  }, [activeFile?.id, panel]);
+  const chooseLayout = (next: Layout) => updatePrefs({ layout: next });
+  function run() {
+    if (view.busy || program.pendingInputs > 0) return;
+    program.run();
+    if (layout !== 'split') chooseLayout('app');
+  }
+  function openFile(id: string, offset?: number) {
+    if (offset !== undefined) pendingLocation.current = { id, offset };
+    view.setActiveId(id);
+    setPanel(null);
+    if (layout === 'app') chooseLayout('code');
+    if (id === activeFile?.id && offset !== undefined) {
+      requestAnimationFrame(() => editor.current?.reveal(offset));
+      pendingLocation.current = null;
+    }
+  }
+  const explorerView = {
+    ...view,
+    setActiveId: ((next) => {
+      const id =
+        typeof next === 'function' ? next(activeFile?.id ?? null) : next;
+      view.setActiveId(id);
+      if (layout === 'app') chooseLayout('code');
+    }) as typeof view.setActiveId,
+  };
+  function closeTab(id: string) {
+    if (visibleTabs.length < 2) return;
+    const remaining = visibleTabs.filter((t) => t !== id);
+    setTabs((ids) => ids.filter((t) => t !== id));
+    if (id === activeFile?.id) view.setActiveId(remaining.at(-1)!);
+  }
+  const updateInput = (name: string, value: ExportValue) => {
+    const field = program.snapshot?.inputs.find((f) => f.name === name);
+    if (!field?.fileId) return;
+    void program.setInput(name, value).then((valid) => {
+      if (valid)
+        void view.updateOverride(
+          field.fileId!,
+          'inputOverrides',
+          field.variableName ?? field.name,
+          value,
+        );
+    });
+  };
+  const commands: Command[] = [
+    {
+      id: 'run',
+      label: 'Run project',
+      detail: 'Ctrl / ⌘ + Enter',
+      action: () => {
+        setPanel(null);
+        run();
+      },
+    },
+    {
+      id: 'stop',
+      label: 'Stop program',
+      action: () => {
+        program.stop();
+        setPanel(null);
+      },
+    },
+    ...(
+      [
+        'Explorer',
+        'Inspector',
+        'Search project',
+        'Problems',
+        'Settings',
+        'Export project',
+      ] as Panel[]
+    ).map((p) => ({ id: p, label: p, action: () => setPanel(p) })),
+    ...view.projectFiles
+      .filter((f) => f.kind === 'file')
+      .map((f) => ({
+        id: f.id,
+        label: f.path,
+        detail: 'Open file',
+        action: () => openFile(f.id),
+      })),
+  ];
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setPanel('Commands');
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+  const status = program.stale
+    ? 'Run to apply changes'
+    : program.error
+      ? 'Runtime error'
+      : program.status === 'running'
+        ? 'Running…'
+        : program.status === 'stopped'
+          ? 'Stopped'
+          : program.snapshot
+            ? 'Active'
+            : 'Ready';
+  function resizeSplit(clientX: number) {
+    const rect = workarea.current?.getBoundingClientRect();
+    if (!rect) return;
+    updatePrefs({
+      split: Math.max(
+        35,
+        Math.min(65, (100 * (clientX - rect.left)) / rect.width),
+      ),
+    });
+  }
   return (
-    <div className="flex h-full min-h-0 flex-col bg-[#0b0f14] text-[#c9d1d9]">
-      <header className="safe-top shrink-0 border-b border-[#21262d] bg-[#0b0f14]">
-        <div className="flex h-[52px] items-center gap-2 px-2 sm:px-3">
-          <button type="button" onClick={() => setExplorerOpen(true)} className="grid h-10 w-10 place-items-center rounded-lg text-[#8b949e] hover:bg-[#161b22] md:hidden" aria-label="Open files">
-            <Files size={19} />
-          </button>
-
-          <div className="hidden h-9 w-9 place-items-center rounded-lg bg-[#1f6feb] text-white md:grid">
-            <Code2 size={19} />
-          </div>
-
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-semibold text-[#f0f6fc]">{activeFile?.name || 'Language Lab'}</div>
-            <div className="flex items-center gap-1.5 text-[11px] text-[#6e7681]">
-              <Save size={11} />
-              {saved ? 'Saved locally' : 'Saving…'}
-            </div>
-          </div>
-
-          <button type="button" onClick={() => setInspectorOpen(true)} className="grid h-10 w-10 place-items-center rounded-lg border border-[#30363d] text-[#b1bac4] hover:bg-[#161b22] lg:hidden" aria-label="Open inspector">
-            <SlidersHorizontal size={17} />
-          </button>
-
-          <button type="button" onClick={run} disabled={!view.project || view.busy || program.pendingInputs > 0} className="flex h-10 items-center gap-2 rounded-lg bg-[#238636] px-3.5 text-sm font-semibold text-white hover:bg-[#2ea043]">
-            <Play size={16} fill="currentColor" /> Run
-          </button>
-          <button type="button" onClick={program.stop} disabled={program.status === 'idle'} className="min-h-11 rounded border border-[#30363d] px-2 text-sm disabled:opacity-40">Stop</button>
+    <div className="lab-shell" style={{ height: viewport.height }}>
+      <header className="lab-header safe-top">
+        <div className="lab-brand">
+          <Code2 size={21} />
+          <span>Language Lab</span>
         </div>
+        <div className="lab-project-title">
+          <strong>{view.project?.name ?? 'Loading workspace…'}</strong>
+          <small>
+            <span className={saved ? 'lab-saved-dot' : 'lab-saving-dot'} />
+            {saved ? 'Saved locally' : 'Saving…'}
+          </small>
+        </div>
+        <button
+          className="lab-icon lab-desktop-tool"
+          aria-label="Open commands"
+          title="Commands (Ctrl / ⌘ + K)"
+          onClick={() => setPanel('Commands')}
+        >
+          <CommandIcon size={19} />
+        </button>
+        <button
+          className="lab-icon"
+          aria-label="Open settings"
+          title="Editor settings"
+          onClick={() => setPanel('Settings')}
+        >
+          <Settings2 size={19} />
+        </button>
+        <button
+          className="lab-run"
+          onClick={run}
+          disabled={!view.project || view.busy || program.pendingInputs > 0}
+        >
+          <Play size={16} fill="currentColor" />
+          Run
+        </button>
+        <button
+          className="lab-icon lab-stop"
+          aria-label="Stop"
+          title="Stop program"
+          disabled={program.status === 'idle' || program.status === 'stopped'}
+          onClick={program.stop}
+        >
+          <Square size={16} />
+        </button>
       </header>
-
-      <div className="flex min-h-0 flex-1">
-        <div className="hidden w-60 shrink-0 md:block"><ProjectExplorer onOpenRunner={onOpenRunner} view={view} /></div>
-
-        <main className="flex min-w-0 flex-1 flex-col bg-[#0d1117]">
-          <div className="flex h-10 shrink-0 items-end border-b border-[#21262d] bg-[#0b0f14]">
-            <div className="flex h-10 min-w-0 items-center gap-2 border-r border-[#21262d] border-t-2 border-t-[#58a6ff] bg-[#0d1117] px-3 text-xs">
-              <Code2 size={14} className="text-[#58a6ff]" />
-              <span className="truncate">{activeFile?.name || 'Loading…'}</span>
-              {!saved && <span className="h-2 w-2 rounded-full bg-[#8b949e]" />}
-            </div>
+      <nav className="lab-toolbar" aria-label="Workspace tools">
+        <button
+          className="lab-tool lab-files-toggle"
+          aria-label="Open files"
+          onClick={() => setPanel('Explorer')}
+        >
+          <Files size={17} />
+          <span>Files</span>
+        </button>
+        <button
+          className="lab-icon lab-sidebar-toggle"
+          aria-label={sidebar ? 'Hide file sidebar' : 'Show file sidebar'}
+          onClick={() => setSidebar(!sidebar)}
+        >
+          <PanelLeftClose size={17} />
+        </button>
+        <div className="lab-view-switch" aria-label="Workspace view">
+          <button
+            aria-pressed={layout === 'code'}
+            onClick={() => chooseLayout('code')}
+          >
+            <Code2 size={16} />
+            Code
+          </button>
+          <button
+            aria-pressed={layout === 'app'}
+            onClick={() => chooseLayout('app')}
+          >
+            <TerminalSquare size={16} />
+            App
+          </button>
+          <button
+            aria-pressed={layout === 'split'}
+            disabled={!wide}
+            title={
+              wide
+                ? 'Code and app together'
+                : 'Side by side needs a wider screen. Unfold or rotate your phone.'
+            }
+            onClick={() => chooseLayout('split')}
+          >
+            <Columns2 size={16} />
+            <span>Side by side</span>
+          </button>
+        </div>
+        <div className="lab-toolbar-spacer" />
+        <button
+          className="lab-tool lab-desktop-tool"
+          aria-label="Open project search"
+          onClick={() => setPanel('Search project')}
+        >
+          <Search size={17} />
+          <span>Search</span>
+        </button>
+        <button
+          className="lab-tool lab-desktop-tool"
+          aria-label="Open inspector"
+          onClick={() => setPanel('Inspector')}
+        >
+          <SlidersHorizontal size={17} />
+          <span>Inspector</span>
+        </button>
+        <button
+          className="lab-tool lab-desktop-tool"
+          aria-label="Open export"
+          onClick={() => setPanel('Export project')}
+        >
+          <Download size={17} />
+          <span>Export</span>
+        </button>
+      </nav>
+      <div className="lab-workspace">
+        {sidebar && (
+          <div className="lab-sidebar">
+            <ProjectExplorer onOpenRunner={onOpenRunner} view={explorerView} />
           </div>
-
-          <div className="min-h-0 flex-1">
-            {activeFile && activeFile.kind === 'file' && !activeFile.bytes ? (
-              <Editor key={activeFile.id} value={activeFile.content} onChange={updateCode} onRun={run} diagnostics={exportAnalysis.diagnostics.filter(d => d.span.fileId === activeFile.id)} />
-            ) : (
-              <div className="grid h-full place-items-center text-sm text-[#6e7681]">Select a source file or create a project.</div>
-            )}
-          </div>
-
-          <section className={'flex min-h-0 flex-col border-t border-[#21262d] bg-[#0b0f14] ' + (consoleOpen ? (program.snapshot?.inputs.length || program.snapshot?.buttons.length ? 'h-[48%] min-h-[180px]' : 'h-[30%] min-h-[150px]') : 'h-11')}>
-            <div className="flex h-11 shrink-0 items-center justify-between px-3">
-              <button type="button" onClick={() => setConsoleOpen((value) => !value)} className="flex h-9 items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-[#8b949e]">
-                <TerminalSquare size={15} /> Output
-              </button>
-              <div className="flex items-center gap-1">
-              {!!view.projectFiles.some(f => Object.keys(f.inputOverrides ?? {}).length) && <button type="button" onClick={resetInputs} className="grid h-11 w-11 place-items-center rounded-md text-[#8b949e] hover:bg-[#161b22] hover:text-white" aria-label="Reset saved inputs and restart" title="Reset saved inputs and restart"><RotateCcw size={14} /></button>}
-              <button type="button" onClick={program.clearOutput} className="grid h-11 w-11 place-items-center rounded-md text-[#8b949e] hover:bg-[#161b22] hover:text-white" aria-label="Clear output">
-                <Trash2 size={14} />
-              </button>
-              </div>
+        )}
+        <main
+          ref={workarea}
+          className={'lab-workarea lab-layout-' + layout}
+          style={{ '--code-share': prefs.split + '%' } as CSSProperties}
+        >
+          <section
+            className="lab-code-pane"
+            aria-label="Code editor"
+            hidden={layout === 'app'}
+          >
+            <div className="lab-tabs" role="tablist" aria-label="Open files">
+              {visibleTabs.map((id) => {
+                const f = view.projectFiles.find((f) => f.id === id)!;
+                return (
+                  <div
+                    className={
+                      'lab-tab' +
+                      (id === activeFile?.id ? ' lab-tab-active' : '')
+                    }
+                    key={id}
+                  >
+                    <button
+                      role="tab"
+                      tabIndex={id === activeFile?.id ? 0 : -1}
+                      onKeyDown={(e) => {
+                        const index = visibleTabs.indexOf(id);
+                        const next =
+                          e.key === 'ArrowRight'
+                            ? (index + 1) % visibleTabs.length
+                            : e.key === 'ArrowLeft'
+                              ? (index - 1 + visibleTabs.length) %
+                                visibleTabs.length
+                              : e.key === 'Home'
+                                ? 0
+                                : e.key === 'End'
+                                  ? visibleTabs.length - 1
+                                  : -1;
+                        if (next >= 0) {
+                          e.preventDefault();
+                          openFile(visibleTabs[next]);
+                          requestAnimationFrame(() =>
+                            (
+                              document.querySelector(
+                                '.lab-tabs [aria-selected="true"]',
+                              ) as HTMLElement
+                            )?.focus(),
+                          );
+                        }
+                      }}
+                      aria-selected={id === activeFile?.id}
+                      title={f.path}
+                      onClick={() => openFile(id)}
+                    >
+                      <Code2 size={14} />
+                      {f.name}
+                    </button>
+                    {visibleTabs.length > 1 && (
+                      <button
+                        aria-label={'Close tab ' + f.path}
+                        onClick={() => closeTab(id)}
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
             </div>
-
-            {consoleOpen && (
-              <div className="ide-scrollbar min-h-0 flex-1 overflow-y-auto overflow-x-hidden border-t border-[#161b22] px-4 py-3">
-                <ProgramOutput key={view.project?.id + ':' + program.generation} snapshot={program.snapshot} stale={program.stale} disabled={!program.usable} error={error} onInput={updateInput} onButton={program.pressButton} onEvent={program.sendEvent} />
-              </div>
+            <div className="lab-breadcrumb" title={activeFile?.path}>
+              {activeFile?.path ?? 'Select a file'}
+            </div>
+            <div className="lab-editor">
+              {activeFile?.kind === 'file' && !activeFile.bytes ? (
+                <Editor
+                  ref={editor}
+                  documentId={activeFile.id}
+                  value={activeFile.content}
+                  onChange={view.updateCode}
+                  onRun={run}
+                  fontSize={prefs.fontSize}
+                  wrap={prefs.wrap}
+                  diagnostics={analysis.diagnostics.filter(
+                    (d) => d.span.fileId === activeFile.id,
+                  )}
+                />
+              ) : (
+                <div className="lab-empty">
+                  <Files size={30} />
+                  <h3>
+                    {activeFile?.bytes
+                      ? 'Binary asset'
+                      : 'Choose a source file'}
+                  </h3>
+                  <p>
+                    {activeFile?.bytes
+                      ? 'Download or manage this asset in Files.'
+                      : 'Open Files to choose or create a program.'}
+                  </p>
+                  <button
+                    className="lab-button"
+                    onClick={() => setPanel('Explorer')}
+                  >
+                    Browse files
+                  </button>
+                </div>
+              )}
+            </div>
+            {prefs.keys && activeFile?.kind === 'file' && !activeFile.bytes && (
+              <TouchKeys editor={editor} />
             )}
           </section>
+          {layout === 'split' && (
+            <div
+              className="lab-resizer"
+              role="separator"
+              aria-label="Resize code and app"
+              aria-orientation="vertical"
+              aria-valuemin={35}
+              aria-valuemax={65}
+              aria-valuenow={Math.round(prefs.split)}
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                  e.preventDefault();
+                  updatePrefs({
+                    split: Math.max(
+                      35,
+                      Math.min(
+                        65,
+                        prefs.split + (e.key === 'ArrowLeft' ? -2 : 2),
+                      ),
+                    ),
+                  });
+                }
+              }}
+              onPointerDown={(e) => {
+                e.currentTarget.setPointerCapture(e.pointerId);
+                resizeSplit(e.clientX);
+              }}
+              onPointerMove={(e) => {
+                if (e.currentTarget.hasPointerCapture(e.pointerId))
+                  resizeSplit(e.clientX);
+              }}
+              onPointerUp={(e) => {
+                if (e.currentTarget.hasPointerCapture(e.pointerId))
+                  e.currentTarget.releasePointerCapture(e.pointerId);
+              }}
+            />
+          )}
+          <section
+            className="lab-app-pane"
+            aria-label="Running app"
+            hidden={layout === 'code'}
+          >
+            <div className="lab-pane-header">
+              <span>
+                <TerminalSquare size={16} />
+                App <small>{status}</small>
+              </span>
+              <div>
+                {view.projectFiles.some(
+                  (f) => Object.keys(f.inputOverrides ?? {}).length > 0,
+                ) && (
+                  <button
+                    className="lab-icon"
+                    aria-label="Reset saved inputs and restart"
+                    onClick={() => {
+                      void view.resetInputs().then((s) => {
+                        if (s) program.run(s);
+                      });
+                    }}
+                  >
+                    <RotateCcw size={16} />
+                  </button>
+                )}
+                <button
+                  className="lab-icon"
+                  aria-label="Clear output"
+                  onClick={program.clearOutput}
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            </div>
+            <div className="lab-output ide-scrollbar">
+              {!program.snapshot && !program.error ? (
+                <div className="lab-empty">
+                  <Play size={32} />
+                  <h2>Your app lives here</h2>
+                  <p>
+                    Run your project to see its controls, scenes and output.
+                  </p>
+                  <button
+                    className="lab-button"
+                    disabled={!view.project || view.busy}
+                    onClick={run}
+                  >
+                    Run project
+                  </button>
+                  <small>Ctrl / ⌘ + Enter</small>
+                </div>
+              ) : (
+                <ProgramOutput
+                  key={view.project?.id + ':' + program.generation}
+                  snapshot={program.snapshot}
+                  stale={program.stale}
+                  disabled={!program.usable}
+                  error={program.error}
+                  onInput={updateInput}
+                  onButton={program.pressButton}
+                  onEvent={program.sendEvent}
+                />
+              )}
+            </div>
+          </section>
         </main>
-
-        <div className="hidden w-72 shrink-0 lg:block">{renderInspector({})}</div>
       </div>
-
-      {storageError && <div role="alert" className="flex items-center justify-between gap-2 bg-[#3d1c1c] px-3 py-2 text-xs text-[#ffb4ae]">
-        <span>{storageError}</span>
-        <button type="button" className="min-h-11 px-2 underline" onClick={() => setStorageError(null)}>Dismiss</button>
-      </div>}
-      <footer className="safe-bottom flex min-h-6 shrink-0 items-center justify-between gap-3 bg-[#0d419d] px-2.5 py-1 text-[10px] text-white sm:text-[11px]">
-        <span>{error ? 'Language error' : program.status === 'running' ? 'Running…' : program.status === 'stopped' ? 'Stopped' : 'Ready'}</span>
-        <span className="truncate">{activeFile?.name || ''} · TypeScript runtime</span>
-      </footer>
-
-      {explorerOpen && (
-        <div className="fixed inset-0 z-50 md:hidden">
-          <button type="button" className="absolute inset-0 bg-black/60" onClick={() => setExplorerOpen(false)} aria-label="Close explorer" />
-          <div className="absolute inset-y-0 left-0 w-[82%] max-w-[320px] shadow-2xl"><ProjectExplorer onOpenRunner={onOpenRunner} view={view} close={() => setExplorerOpen(false)} /></div>
+      {view.storageError && !panel && (
+        <div role="alert" className="lab-storage-error">
+          <span>{view.storageError}</span>
+          <button onClick={() => view.setStorageError(null)}>Dismiss</button>
         </div>
       )}
-
-      {inspectorOpen && (
-        <div className="fixed inset-0 z-50 lg:hidden">
-          <button type="button" className="absolute inset-0 bg-black/60" onClick={() => setInspectorOpen(false)} aria-label="Close inspector" />
-          <div className="absolute inset-y-0 right-0 w-[86%] max-w-[360px] shadow-2xl">{renderInspector({ mobile: true })}</div>
-        </div>
+      <footer className="lab-status">
+        <button aria-label="Open problems" onClick={() => setPanel('Problems')}>
+          <CircleAlert size={14} />
+          {analysis.diagnostics.length
+            ? `${analysis.diagnostics.length} problem${analysis.diagnostics.length === 1 ? '' : 's'}`
+            : 'No problems'}
+        </button>
+        <span>{status}</span>
+        <button
+          className="lab-status-commands"
+          onClick={() => setPanel('Commands')}
+        >
+          Commands <kbd>⌘ / Ctrl K</kbd>
+        </button>
+      </footer>
+      <nav className="lab-mobile-dock safe-bottom" aria-label="Mobile tools">
+        <button
+          aria-label="Open project search"
+          onClick={() => setPanel('Search project')}
+        >
+          <Search size={20} />
+          Search
+        </button>
+        <button
+          aria-label="Open inspector"
+          onClick={() => setPanel('Inspector')}
+        >
+          <SlidersHorizontal size={20} />
+          Inspector
+        </button>
+        <button aria-label="Open commands" onClick={() => setPanel('Commands')}>
+          <CommandIcon size={20} />
+          Commands
+        </button>
+        <button
+          aria-label="Open export"
+          onClick={() => setPanel('Export project')}
+        >
+          <Download size={20} />
+          Export
+        </button>
+      </nav>
+      {panel && (
+        <Dialog
+          title={panel}
+          close={() => setPanel(null)}
+          wide={panel === 'Search project' || panel === 'Export project'}
+        >
+          {view.storageError && (
+            <p role="alert" className="lab-error">
+              {view.storageError}
+            </p>
+          )}
+          {panel === 'Explorer' && (
+            <ProjectExplorer
+              onOpenRunner={onOpenRunner}
+              view={explorerView}
+              close={() => setPanel(null)}
+            />
+          )}
+          {panel === 'Inspector' && (
+            <Inspector
+              view={view}
+              fields={analysis.fields}
+              error={analysis.error}
+            />
+          )}
+          {panel === 'Commands' && <Commands commands={commands} />}
+          {panel === 'Search project' && (
+            <ProjectSearch view={view} open={openFile} />
+          )}
+          {panel === 'Problems' && (
+            <Problems
+              view={view}
+              diagnostics={analysis.diagnostics}
+              open={openFile}
+            />
+          )}
+          {panel === 'Settings' && (
+            <Settings prefs={prefs} update={updatePrefs} />
+          )}
+          {panel === 'Export project' && (
+            <ExportPanel snapshot={view.snapshot} />
+          )}
+        </Dialog>
       )}
     </div>
   );
