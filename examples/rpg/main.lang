@@ -1,0 +1,337 @@
+enum Gender [Male, Female].
+
+record Stats [integer: strength, integer: dexterity, integer: constitution, integer: wisdom, integer: intelligence, integer: charisma].
+
+@group("Personal Info")
+@label("Name")
+@help("Your character's name")
+input text: name = "Lyra".
+
+@group("Personal Info")
+@label("Gender")
+@help("Your character's gender")
+input Gender: gender = Female.
+
+@group("Stats")
+@label("Strength")
+@help("Improves melee damage.")
+@range(1, 10)
+input integer: strength = 1.
+
+@group("Stats")
+@label("Dexterity")
+@help("Improves your chance to dodge attacks.")
+@range(1, 10)
+input integer: dexterity = 1.
+
+@group("Stats")
+@label("Constitution")
+@help("Increases maximum health.")
+@range(1, 10)
+input integer: constitution = 1.
+
+@group("Stats")
+@label("Wisdom")
+@help("Improves potion healing.")
+@range(1, 10)
+input integer: wisdom = 1.
+
+@group("Stats")
+@label("Intelligence")
+@help("Improves Firebolt damage.")
+@range(1, 10)
+input integer: intelligence = 1.
+
+@group("Stats")
+@label("Charisma")
+@help("Improves your chance to intimidate enemies.")
+@range(1, 10)
+input integer: charisma = 1.
+
+constant integer: baseHealth = 20.
+constant integer: startingPotions = 3.
+constant integer: startingSpellUses = 3.
+
+boolean: characterCreated = false.
+boolean: battleActive = false.
+boolean: gameOver = false.
+
+text: characterName = "".
+Gender: characterGender = Female.
+
+Stats: characterStats = {"strength": 1, "dexterity": 1, "constitution": 1, "wisdom": 1, "intelligence": 1, "charisma": 1}.
+
+integer: maxHealth = 1.
+integer: currentHealth = 1.
+
+integer: goblinMaxHealth = 45.
+integer: goblinHealth = 45.
+integer: goblinStrength = 4.
+
+integer: potions = startingPotions.
+integer: spellUses = startingSpellUses.
+integer: victories = 0.
+
+function calculateMaxHealth(integer: constitutionValue) returns integer.
+    return baseHealth + constitutionValue * 3.
+end function.
+
+function showStats().
+    print("Character:", characterName).
+    print("Gender:", characterGender).
+    print("Strength:", characterStats.strength).
+    print("Dexterity:", characterStats.dexterity).
+    print("Constitution:", characterStats.constitution).
+    print("Wisdom:", characterStats.wisdom).
+    print("Intelligence:", characterStats.intelligence).
+    print("Charisma:", characterStats.charisma).
+end function.
+
+function showBattleStatus().
+    print(characterName, "HP:", currentHealth, "/", maxHealth).
+    print("Goblin HP:", goblinHealth, "/", goblinMaxHealth).
+    print("Potions:", potions).
+    print("Spell Uses:", spellUses).
+    print("Victories:", victories).
+end function.
+
+function checkPlayerDeath().
+    if currentHealth is less than or equal to 0, do.
+        currentHealth = 0.
+        battleActive = false.
+        gameOver = true.
+
+        print(characterName, "has been defeated by the goblin!").
+        print("Final victories:", victories).
+    end if.
+end function.
+
+function checkGoblinDeath().
+    if goblinHealth is less than or equal to 0, do.
+        goblinHealth = 0.
+        battleActive = false.
+        victories = victories + 1.
+
+        print("The goblin has been defeated!").
+        print(characterName, "wins the battle!").
+        print("Victories:", victories).
+    end if.
+end function.
+
+function goblinAttack().
+    if battleActive, do.
+        integer: dodgeRoll = randomInteger(1, 20).
+
+        if dodgeRoll is less than or equal to characterStats.dexterity, do.
+            print(characterName, "dodges the goblin's attack!").
+        else, do.
+            integer: goblinDamage = randomInteger(1, 6) + goblinStrength.
+            currentHealth = currentHealth - goblinDamage.
+
+            print("The goblin attacks for", goblinDamage, "damage!").
+            checkPlayerDeath().
+        end if.
+    end if.
+end function.
+
+on start, do.
+    print("Welcome to Goblin Arena. Roll your stats, then create your character.").
+end on.
+
+button "Roll Stats", do.
+    if characterCreated is false, do.
+        strength = randomInteger(1, 10).
+        dexterity = randomInteger(1, 10).
+        constitution = randomInteger(1, 10).
+        wisdom = randomInteger(1, 10).
+        intelligence = randomInteger(1, 10).
+        charisma = randomInteger(1, 10).
+
+        print("Stats rolled!").
+    else, do.
+        print("Your character has already been created.").
+    end if.
+end button.
+
+button "Create Character", do.
+    if characterCreated is false, do.
+        characterName = name.
+        characterGender = gender.
+
+        characterStats = {
+            "strength": strength,
+            "dexterity": dexterity,
+            "constitution": constitution,
+            "wisdom": wisdom,
+            "intelligence": intelligence,
+            "charisma": charisma
+        }.
+
+        maxHealth = calculateMaxHealth(characterStats.constitution).
+        currentHealth = maxHealth.
+
+        characterCreated = true.
+        battleActive = true.
+        gameOver = false.
+
+        goblinHealth = goblinMaxHealth.
+        potions = startingPotions.
+        spellUses = startingSpellUses.
+
+        print("Character created!").
+        showStats().
+        print("Maximum Health:", maxHealth).
+        print("A goblin appears!").
+        showBattleStatus().
+    else, do.
+        print("Your character has already been created.").
+    end if.
+end button.
+
+button "Attack", do.
+    if characterCreated is false, do.
+        print("Create your character first.").
+    elif battleActive is false, do.
+        print("There is nothing to attack.").
+    else, do.
+        integer: damageRoll = randomInteger(1, 6).
+        integer: damage = damageRoll + characterStats.strength.
+
+        goblinHealth = goblinHealth - damage.
+
+        print(characterName, "attacks for", damage, "damage!").
+        checkGoblinDeath().
+
+        if battleActive, do.
+            goblinAttack().
+        end if.
+
+        showBattleStatus().
+    end if.
+end button.
+
+button "Power Attack", do.
+    if characterCreated is false, do.
+        print("Create your character first.").
+    elif battleActive is false, do.
+        print("There is nothing to attack.").
+    else, do.
+        integer: hitRoll = randomInteger(1, 20).
+
+        if hitRoll is less than or equal to 6, do.
+            print(characterName, "misses the power attack!").
+        else, do.
+            integer: damage = randomInteger(1, 6) + randomInteger(1, 6) + characterStats.strength * 2.
+            goblinHealth = goblinHealth - damage.
+
+            print(characterName, "lands a power attack for", damage, "damage!").
+            checkGoblinDeath().
+        end if.
+
+        if battleActive, do.
+            goblinAttack().
+        end if.
+
+        showBattleStatus().
+    end if.
+end button.
+
+button "Cast Firebolt", do.
+    if characterCreated is false, do.
+        print("Create your character first.").
+    elif battleActive is false, do.
+        print("There is nothing to attack.").
+    elif spellUses is less than or equal to 0, do.
+        print("You have no spell uses remaining.").
+    else, do.
+        integer: spellDamage = randomInteger(1, 8) + characterStats.intelligence.
+
+        spellUses = spellUses - 1.
+        goblinHealth = goblinHealth - spellDamage.
+
+        print(characterName, "casts Firebolt for", spellDamage, "damage!").
+        checkGoblinDeath().
+
+        if battleActive, do.
+            goblinAttack().
+        end if.
+
+        showBattleStatus().
+    end if.
+end button.
+
+button "Drink Potion", do.
+    if characterCreated is false, do.
+        print("Create your character first.").
+    elif battleActive is false, do.
+        print("You are not currently in battle.").
+    elif potions is less than or equal to 0, do.
+        print("You have no potions left.").
+    elif currentHealth is greater than or equal to maxHealth, do.
+        print("You are already at full health.").
+    else, do.
+        integer: healing = randomInteger(1, 6) + characterStats.wisdom.
+
+        currentHealth = currentHealth + healing.
+        potions = potions - 1.
+
+        if currentHealth is greater than maxHealth, do.
+            currentHealth = maxHealth.
+        end if.
+
+        print(characterName, "heals", healing, "HP!").
+        goblinAttack().
+        showBattleStatus().
+    end if.
+end button.
+
+button "Intimidate", do.
+    if characterCreated is false, do.
+        print("Create your character first.").
+    elif battleActive is false, do.
+        print("There is no goblin to intimidate.").
+    else, do.
+        integer: intimidationRoll = randomInteger(1, 20).
+
+        if intimidationRoll is less than or equal to characterStats.charisma, do.
+            print(characterName, "terrifies the goblin!").
+            print("The goblin loses its turn.").
+        else, do.
+            print("The goblin is not impressed.").
+            goblinAttack().
+        end if.
+
+        showBattleStatus().
+    end if.
+end button.
+
+button "Status", do.
+    if characterCreated, do.
+        showBattleStatus().
+    else, do.
+        print("Create your character first.").
+    end if.
+end button.
+
+button "Fight New Goblin", do.
+    if characterCreated is false, do.
+        print("Create your character first.").
+    elif battleActive, do.
+        print("You are already fighting a goblin!").
+    elif gameOver, do.
+        print("You were defeated. Run the program again to create a new character.").
+    else, do.
+        goblinMaxHealth = goblinMaxHealth + 5.
+        goblinHealth = goblinMaxHealth.
+        goblinStrength = goblinStrength + 1.
+
+        currentHealth = maxHealth.
+        spellUses = startingSpellUses.
+        battleActive = true.
+
+        print("A stronger goblin approaches!").
+        print("Goblin HP:", goblinHealth).
+        print("Goblin Strength:", goblinStrength).
+        showBattleStatus().
+    end if.
+end button.
