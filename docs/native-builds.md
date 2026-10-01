@@ -99,3 +99,11 @@ Native packaging does not create a second interpreter or transpile Language Lab 
 Programs do not gain arbitrary native filesystem, process, shell or network access merely because they are packaged. Native builds require VS Code Workspace Trust.
 
 A failed build leaves its temporary native workspace on disk and prints the path in the **Language Lab Build** output channel for troubleshooting. Successful builds remove the temporary workspace.
+
+## Troubleshooting launch failures
+
+On Windows, the extension invokes npm's `npx-cli.js` through `node.exe` rather than spawning `npx.cmd` directly. Direct batch-file spawning with `shell: false` produces `spawn EINVAL` on current Node versions. This launcher preserves spaces and shell characters in paths without enabling shell interpretation.
+
+If an older extension reports `spawn EINVAL`, install the updated VSIX and reload VS Code. The build output should show `node.exe` followed by `npx-cli.js`. Missing or incomplete Node/npm installations now report a prerequisite error; install/repair Node.js with npm and restart VS Code so it receives the updated PATH. Rust, C++ tools and Android prerequisites are still required for the actual build.
+
+The exporter also resolves Cargo from PATH, `CARGO_HOME/bin`, or the standard user `.cargo/bin` installation. It places that resolved directory on the build-only PATH, consolidates Windows `Path`/`PATH` aliases, and passes the same environment to prerequisite checks, npm and Tauri. This handles Rust installed after VS Code started without editing your system PATH. The build log reports the resolved Cargo path. Cargo and rustc are checked from the temporary build directory before icon generation; a missing Rust toolchain still needs installation.
