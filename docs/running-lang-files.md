@@ -1,5 +1,7 @@
 # Running .lang files
 
+For a distributable application that requires no Language Lab tooling, use [Download standalone HTML](standalone-html.md).
+
 A `.lang` file is now directly runnable **source**. Language Lab supplies the interpreter and application host; the file is not a native executable and does not install itself.
 
 ## Command line
@@ -94,6 +96,7 @@ Opening and running does not add anything to your project library, change existi
 | Download file for `.lang` source | Clean source text and a `.lang` filename, with `text/x-language-lab;charset=utf-8`. No overrides, executable wrapper, manifest, or runtime is inserted. MIME/extension registration is not assumed on every OS. |
 | Project ZIP | Project metadata, source files, and assets. Import it in the IDE for multi-file execution; the single-file runner does not unpack ZIPs. |
 | Interactive runner | Language Lab's lightweight browser host for source, controls, buttons, events, and output. |
-| Future standalone/native build | A separate future target. This change does not generate EXE/APK, standalone HTML, bytecode, a JS compiler, or debugger. |
+| Standalone HTML app | A complete, offline browser application with the interpreter, controls, source and project assets embedded. See [standalone export](standalone-html.md). |
+| Future native build | EXE/APK, bytecode, a JS compiler and debugger remain separate future targets. |
 
 Downloading a file from a multi-file project does not bundle its dependencies. Use project ZIP export when those files are needed.

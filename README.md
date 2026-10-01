@@ -2,6 +2,12 @@
 
 A browser-based IDE and interpreter for an English-like, executable-pseudocode programming language.
 
+## Standalone applications
+
+Choose **Files → Project actions → Download standalone HTML** (also available in the file runner). Share the resulting HTML file: it contains the app, interpreter, controls and assets and runs offline in a browser without Language Lab or the IDE.
+
+See [Standalone HTML applications](docs/standalone-html.md) for configuration, state and mobile file-opening behavior.
+
 ## Running .lang files
 
 ```sh

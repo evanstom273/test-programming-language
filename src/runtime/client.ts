@@ -1,3 +1,4 @@
+import InlineWorker from './worker?worker&inline';
 import type { RuntimeCommand, WorkerRequest, WorkerResponse } from './protocol';
 export interface WorkerPort {
   postMessage(message: WorkerRequest): void;
@@ -19,8 +20,7 @@ export class RuntimeClient {
     }
   >();
   constructor(
-    private factory: () => WorkerPort = () =>
-      new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' }),
+    private factory: () => WorkerPort = () => new InlineWorker(),
     private timeoutMs = 5000,
   ) {}
   stop(reason = 'Program stopped.'): void {

@@ -22,6 +22,7 @@ export default function Runner({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const serial = useRef(0);
   const picker = useRef<HTMLInputElement>(null);
   const program = useProgramSession(project);
@@ -188,6 +189,31 @@ export default function Runner({
                 onClick={program.clearOutput}
               >
                 Clear output
+              </button>
+              <button
+                className={buttonClass}
+                disabled={exporting || saving}
+                onClick={() => {
+                  const snapshot = structuredClone(project);
+                  const token = serial.current;
+                  setExporting(true);
+                  setFileError(null);
+                  void import('../build/standalone/download')
+                    .then(({ downloadStandalone }) =>
+                      downloadStandalone(snapshot),
+                    )
+                    .catch((error) => {
+                      if (token === serial.current)
+                        setFileError(
+                          error instanceof Error
+                            ? error.message
+                            : String(error),
+                        );
+                    })
+                    .finally(() => setExporting(false));
+                }}
+              >
+                {exporting ? 'Preparing HTML…' : 'Download standalone HTML'}
               </button>
               <button
                 className={buttonClass}

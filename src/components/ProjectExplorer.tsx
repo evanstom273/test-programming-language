@@ -144,6 +144,21 @@ export function ProjectExplorer({
                 </button>
                 <button
                   disabled={view.busy}
+                  className={actionClass + ' col-span-2'}
+                  onClick={() => {
+                    const snapshot = structuredClone(view.snapshot!);
+                    act(async () => {
+                      const { downloadStandalone } = await import(
+                        '../build/standalone/download'
+                      );
+                      await downloadStandalone(snapshot);
+                    });
+                  }}
+                >
+                  Download standalone HTML
+                </button>
+                <button
+                  disabled={view.busy}
                   className={actionClass}
                   onClick={() => {
                     if (
