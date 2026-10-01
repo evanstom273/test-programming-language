@@ -50,8 +50,8 @@ export function ValueControl({ field, value, onChange, onReset, onValidityChange
   return (
     <div className="min-w-0">
       <div className="mb-2 flex min-h-6 items-center justify-between gap-2">
-        <label htmlFor={id} className="break-words text-sm font-medium text-[#f0f6fc] [overflow-wrap:anywhere]">{labelFor(field.name)}</label>
-        {onReset && <button type="button" onClick={() => { onReset(); setError(null); }} disabled={disabled} className="grid h-11 w-11 shrink-0 place-items-center rounded-md text-[#8b949e] hover:bg-[#161b22] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#58a6ff] disabled:opacity-50" aria-label={'Reset ' + labelFor(field.name) + ' to default'}><RotateCcw size={14} /></button>}
+        <label htmlFor={id} className="break-words text-sm font-medium text-[#f0f6fc] [overflow-wrap:anywhere]">{labelFor(field.label ?? field.name)}</label>
+        {onReset && <button type="button" onClick={() => { onReset(); setError(null); }} disabled={disabled} className="grid h-11 w-11 shrink-0 place-items-center rounded-md text-[#8b949e] hover:bg-[#161b22] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#58a6ff] disabled:opacity-50" aria-label={'Reset ' + labelFor(field.label ?? field.name) + ' to default'}><RotateCcw size={14} /></button>}
       </div>
       {field.control === 'boolean' ? (
         <div className="flex min-h-11 items-center gap-3 rounded-md border border-[#30363d] bg-[#0d1117] px-3">

@@ -8,7 +8,7 @@ afterEach(async () => { await db.delete(); });
 describe('local input persistence', () => {
   it('preserves source and exports across input writes, rapid edits and reopening', async () => {
     await db.open();
-    const file = await ensureStarterFile();
+    const file = (await ensureStarterFile())!;
     await saveOverride(file.id, 'exportOverrides', 'title', 'My title');
     await Promise.all([
       saveOverride(file.id, 'inputOverrides', 'numberOne', 42),

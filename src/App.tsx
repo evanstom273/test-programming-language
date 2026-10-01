@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useState } from 'react';
+import { useWorkspace } from './hooks/useWorkspace';
+import { useProjectAnalysis } from './hooks/useProjectAnalysis';
+import { ProjectExplorer } from './components/ProjectExplorer';
 import {
   Code2,
-  FileCode2,
-  FilePlus2,
   Files,
   Play,
   RotateCcw,
@@ -13,164 +14,29 @@ import {
   X
 } from 'lucide-react';
 import { Editor } from './Editor';
-import { db, ensureStarterFile, saveOverride, withOverride, type OverrideKind, type CodeFile } from './db';
 import { ValueControl } from './components/ValueControl';
 import { ProgramOutput } from './components/ProgramOutput';
-import { useProgramSession, errorMessage } from './hooks/useProgramSession';
+import { useProgramSession } from './hooks/useProgramSession';
 import {
-  inspectSource,
-  type ExportField,
   type ExportValue
 } from './language/runtime';
 
 export default function App() {
-  const [files, setFiles] = useState<CodeFile[]>([]);
-  const [activeId, setActiveId] = useState<string | null>(null);
-  const [storageError, setStorageError] = useState<string | null>(null);
+  const view = useWorkspace();
+  const { activeFile, updateCode, saved, storageError, setStorageError } = view;
   const [explorerOpen, setExplorerOpen] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [consoleOpen, setConsoleOpen] = useState(true);
-  const [saved, setSaved] = useState(true);
-  const saveTimer = useRef<number | null>(null);
-
-  const activeFile = useMemo(
-    () => files.find((file) => file.id === activeId) || files[0] || null,
-    [files, activeId]
-  );
-
-  const program = useProgramSession(activeFile);
+  const program = useProgramSession(view.snapshot);
   const error = program.error;
-
-  const exportAnalysis = useMemo(() => {
-    if (!activeFile) return { fields: [] as ExportField[], error: null as string | null };
-    try {
-      return { fields: inspectSource(activeFile.content), error: null };
-    } catch (caught) {
-      const message = caught instanceof Error ? caught.message : 'Unable to read exported values.';
-      return { fields: [] as ExportField[], error: message };
-    }
-  }, [activeFile?.id, activeFile?.content]);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const starter = await ensureStarterFile();
-      const stored = await db.files.orderBy('createdAt').toArray();
-      if (cancelled) return;
-      setFiles(stored);
-      setActiveId(starter.id);
-    })().catch((caught) => setStorageError('Unable to open local files: ' + errorMessage(caught)));
-
-    return () => { cancelled = true; };
-  }, []);
-
-  const updateCode = useCallback((content: string) => {
-    if (!activeFile) return;
-    const updatedAt = Date.now();
-    setSaved(false);
-    setFiles((current) => current.map((file) => file.id === activeFile.id ? { ...file, content, updatedAt } : file));
-
-    if (saveTimer.current) window.clearTimeout(saveTimer.current);
-    saveTimer.current = window.setTimeout(async () => {
-      await db.files.update(activeFile.id, { content, updatedAt });
-      setSaved(true);
-    }, 350);
-  }, [activeFile]);
-
-  const updateOverride = useCallback((kind: OverrideKind, name: string, value: ExportValue | undefined) => {
-    if (!activeFile) return;
-    const id = activeFile.id;
-    setFiles((current) => current.map((file) => file.id === id ? { ...file, [kind]: withOverride(file[kind], name, value) } : file));
-    void saveOverride(id, kind, name, value).catch((caught) => {
-      setStorageError('Unable to save control values. Keep this page open and try editing the value again. ' + errorMessage(caught));
-    });
-  }, [activeFile?.id]);
-
-  const run = () => {
-    setConsoleOpen(true);
-    program.run();
-  };
-
+  const exportAnalysis = useProjectAnalysis(view.snapshot);
+  const run = () => { setConsoleOpen(true); program.run(); };
   const updateInput = (name: string, value: ExportValue) => {
-    program.setInput(name, value);
-    updateOverride('inputOverrides', name, value);
+    const field = program.snapshot?.inputs.find(f => f.name === name);
+    if (!field?.fileId) return;
+    void program.setInput(name, value).then(valid => { if (valid) void view.updateOverride(field.fileId!, 'inputOverrides', field.label ?? field.name, value); });
   };
-
-  const resetInputs = () => {
-    if (!activeFile) return;
-    setFiles((current) => current.map((file) => file.id === activeFile.id ? { ...file, inputOverrides: {} } : file));
-    void db.files.update(activeFile.id, { inputOverrides: {} }).catch((caught) => setStorageError('Unable to reset saved inputs: ' + errorMessage(caught)));
-    program.run({});
-    setConsoleOpen(true);
-  };
-
-  const createFile = useCallback(async () => {
-    const now = Date.now();
-    const file: CodeFile = {
-      id: crypto.randomUUID(),
-      name: 'file' + (files.length + 1) + '.lang',
-      content: 'print("Hello from a new file.").',
-      exportOverrides: {},
-      createdAt: now,
-      updatedAt: now
-    };
-
-    await db.files.add(file);
-    setFiles((current) => [...current, file]);
-    setActiveId(file.id);
-    setExplorerOpen(false);
-  }, [files.length]);
-
-  const deleteFile = useCallback(async (id: string) => {
-    if (files.length <= 1) return;
-    await db.files.delete(id);
-    const remaining = files.filter((file) => file.id !== id);
-    setFiles(remaining);
-    if (activeId === id) setActiveId(remaining[0]?.id || null);
-  }, [activeId, files]);
-
-  const Explorer = ({ mobile = false }: { mobile?: boolean }) => (
-    <aside className="flex h-full min-h-0 flex-col border-r border-[#21262d] bg-[#0d1117]">
-      <div className="flex h-11 items-center justify-between border-b border-[#21262d] px-3">
-        <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8b949e]">Explorer</span>
-        <div className="flex gap-1">
-          <button type="button" onClick={createFile} className="grid h-8 w-8 place-items-center rounded-md text-[#8b949e] hover:bg-[#161b22] hover:text-white" aria-label="New file">
-            <FilePlus2 size={16} />
-          </button>
-          {mobile && (
-            <button type="button" onClick={() => setExplorerOpen(false)} className="grid h-8 w-8 place-items-center rounded-md text-[#8b949e] hover:bg-[#161b22] hover:text-white" aria-label="Close explorer">
-              <X size={17} />
-            </button>
-          )}
-        </div>
-      </div>
-
-      <div className="px-3 pb-2 pt-3 text-xs font-semibold text-[#8b949e]">PROJECT</div>
-      <div className="ide-scrollbar min-h-0 flex-1 overflow-y-auto px-1.5">
-        {files.map((file) => {
-          const active = file.id === activeFile?.id;
-          return (
-            <div key={file.id} className={'group mb-0.5 flex items-center rounded-md ' + (active ? 'bg-[#1f6feb24] text-white' : 'text-[#b1bac4] hover:bg-[#161b22]')}>
-              <button type="button" onClick={() => { setActiveId(file.id); setExplorerOpen(false); }} className="flex min-w-0 flex-1 items-center gap-2 px-2.5 py-2 text-left text-[13px]">
-                <FileCode2 size={15} className={active ? 'text-[#58a6ff]' : 'text-[#7d8590]'} />
-                <span className="truncate">{file.name}</span>
-              </button>
-              {files.length > 1 && (
-                <button type="button" onClick={() => deleteFile(file.id)} className="mr-1 grid h-8 w-8 place-items-center rounded text-[#6e7681] hover:bg-[#30363d] hover:text-[#f85149]" aria-label={'Delete ' + file.name}>
-                  <Trash2 size={14} />
-                </button>
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      <div className="border-t border-[#21262d] p-3 text-[11px] leading-5 text-[#6e7681]">
-        Files, Inspector overrides, and program inputs are saved locally with IndexedDB.
-      </div>
-    </aside>
-  );
-
+  const resetInputs = () => { void view.resetInputs().then(snapshot => { if (snapshot) program.run(snapshot); }); setConsoleOpen(true); };
   const renderInspector = ({ mobile = false }: { mobile?: boolean }) => (
     <aside className="flex h-full min-h-0 flex-col border-l border-[#21262d] bg-[#0d1117]">
       <div className="flex h-11 items-center justify-between border-b border-[#21262d] px-3">
@@ -198,18 +64,19 @@ export default function App() {
         ) : (
           <div className="space-y-4">
             {exportAnalysis.fields.map((field) => {
-              const overrides = activeFile?.exportOverrides || {};
+              const overrides = view.projectFiles.find(f => f.id === field.fileId)?.exportOverrides || {};
               const hasOverride = Object.prototype.hasOwnProperty.call(overrides, field.name);
               const current = hasOverride ? overrides[field.name] : field.defaultValue;
 
               return (
-                <div key={field.name} className="rounded-lg border border-[#21262d] bg-[#0b0f14] p-3">
+                <div key={field.fileId + field.name} className="rounded-lg border border-[#21262d] bg-[#0b0f14] p-3">
+                  {field.computedDefault && !hasOverride && <p className="mb-2 text-xs text-[#8b949e]">Default requires execution. The control below sets an override.</p>}
                   <ValueControl
                     field={field}
                     value={current}
-                    onChange={(value) => updateOverride('exportOverrides', field.name, value)}
-                    onReset={hasOverride ? () => updateOverride('exportOverrides', field.name, undefined) : undefined}
-                    hint={field.typeName + ' · ' + (hasOverride ? 'Inspector override' : 'Code default')}
+                    onChange={(value) => view.updateOverride(field.fileId!, 'exportOverrides', field.name, value)}
+                    onReset={hasOverride ? () => view.updateOverride(field.fileId!, 'exportOverrides', field.name, undefined) : undefined}
+                    hint={field.typeName + ' · ' + (hasOverride ? 'Inspector override' : field.computedDefault ? 'Computed on Run; edit to override' : 'Code default') + ' · ' + field.path}
                   />
                 </div>
               );
@@ -244,14 +111,15 @@ export default function App() {
             <SlidersHorizontal size={17} />
           </button>
 
-          <button type="button" onClick={run} className="flex h-10 items-center gap-2 rounded-lg bg-[#238636] px-3.5 text-sm font-semibold text-white hover:bg-[#2ea043]">
+          <button type="button" onClick={run} disabled={!view.project || view.busy} className="flex h-10 items-center gap-2 rounded-lg bg-[#238636] px-3.5 text-sm font-semibold text-white hover:bg-[#2ea043]">
             <Play size={16} fill="currentColor" /> Run
           </button>
+          <button type="button" onClick={program.stop} disabled={program.status === 'idle'} className="min-h-11 rounded border border-[#30363d] px-2 text-sm disabled:opacity-40">Stop</button>
         </div>
       </header>
 
       <div className="flex min-h-0 flex-1">
-        <div className="hidden w-60 shrink-0 md:block"><Explorer /></div>
+        <div className="hidden w-60 shrink-0 md:block"><ProjectExplorer view={view} /></div>
 
         <main className="flex min-w-0 flex-1 flex-col bg-[#0d1117]">
           <div className="flex h-10 shrink-0 items-end border-b border-[#21262d] bg-[#0b0f14]">
@@ -263,10 +131,10 @@ export default function App() {
           </div>
 
           <div className="min-h-0 flex-1">
-            {activeFile ? (
-              <Editor key={activeFile.id} value={activeFile.content} onChange={updateCode} onRun={run} />
+            {activeFile && activeFile.kind === 'file' && !activeFile.bytes ? (
+              <Editor key={activeFile.id} value={activeFile.content} onChange={updateCode} onRun={run} diagnostics={exportAnalysis.diagnostics.filter(d => d.span.fileId === activeFile.id)} />
             ) : (
-              <div className="grid h-full place-items-center text-sm text-[#6e7681]">Opening workspace…</div>
+              <div className="grid h-full place-items-center text-sm text-[#6e7681]">Select a source file or create a project.</div>
             )}
           </div>
 
@@ -276,7 +144,7 @@ export default function App() {
                 <TerminalSquare size={15} /> Output
               </button>
               <div className="flex items-center gap-1">
-              {!!Object.keys(activeFile?.inputOverrides ?? {}).length && <button type="button" onClick={resetInputs} className="grid h-11 w-11 place-items-center rounded-md text-[#8b949e] hover:bg-[#161b22] hover:text-white" aria-label="Reset saved inputs and restart" title="Reset saved inputs and restart"><RotateCcw size={14} /></button>}
+              {!!view.projectFiles.some(f => Object.keys(f.inputOverrides ?? {}).length) && <button type="button" onClick={resetInputs} className="grid h-11 w-11 place-items-center rounded-md text-[#8b949e] hover:bg-[#161b22] hover:text-white" aria-label="Reset saved inputs and restart" title="Reset saved inputs and restart"><RotateCcw size={14} /></button>}
               <button type="button" onClick={program.clearOutput} className="grid h-11 w-11 place-items-center rounded-md text-[#8b949e] hover:bg-[#161b22] hover:text-white" aria-label="Clear output">
                 <Trash2 size={14} />
               </button>
@@ -285,7 +153,7 @@ export default function App() {
 
             {consoleOpen && (
               <div className="ide-scrollbar min-h-0 flex-1 overflow-y-auto overflow-x-hidden border-t border-[#161b22] px-4 py-3">
-                <ProgramOutput key={activeFile?.id + ':' + program.generation} snapshot={program.snapshot} stale={program.stale} error={error} onInput={updateInput} onButton={program.pressButton} />
+                <ProgramOutput key={view.project?.id + ':' + program.generation} snapshot={program.snapshot} stale={program.stale} disabled={!program.usable} error={error} onInput={updateInput} onButton={program.pressButton} />
               </div>
             )}
           </section>
@@ -299,14 +167,14 @@ export default function App() {
         <button type="button" className="min-h-11 px-2 underline" onClick={() => setStorageError(null)}>Dismiss</button>
       </div>}
       <footer className="safe-bottom flex min-h-6 shrink-0 items-center justify-between gap-3 bg-[#0d419d] px-2.5 py-1 text-[10px] text-white sm:text-[11px]">
-        <span>{error ? 'Language error' : 'Ready'}</span>
+        <span>{error ? 'Language error' : program.status === 'running' ? 'Running…' : program.status === 'stopped' ? 'Stopped' : 'Ready'}</span>
         <span className="truncate">{activeFile?.name || ''} · TypeScript runtime</span>
       </footer>
 
       {explorerOpen && (
         <div className="fixed inset-0 z-50 md:hidden">
           <button type="button" className="absolute inset-0 bg-black/60" onClick={() => setExplorerOpen(false)} aria-label="Close explorer" />
-          <div className="absolute inset-y-0 left-0 w-[82%] max-w-[320px] shadow-2xl"><Explorer mobile /></div>
+          <div className="absolute inset-y-0 left-0 w-[82%] max-w-[320px] shadow-2xl"><ProjectExplorer view={view} close={() => setExplorerOpen(false)} /></div>
         </div>
       )}
 

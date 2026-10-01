@@ -1,5 +1,7 @@
 import { LanguageError } from './lexer';
 import { parseSource } from './parser';
+import { compileSource, type Program, type ModuleDefinition } from './analysis';
+import { type SourceSpan, pointSpan } from './diagnostics';
 import { PRIMITIVE_TYPES, type Value, type ExportValue, type ExportOverrides, type TypeName, type Located, type Expression, type Statement } from './ast';
 import { isLanguageValue, type ProgramField, type ProgramSnapshot, type ProgramOptions } from './program';
 export type { ExportValue, ExportOverrides } from './ast';
@@ -51,7 +53,9 @@ class Environment {
 }
 
 interface RuntimeContext {
-  output: string[];
+  shared: { output: string[]; outputBytes: number; truncated: boolean; steps: number; depth: number; deadline: number; cancelled: () => boolean; maxSteps: number; lastSpan: SourceSpan };
+  imports: Map<string, RuntimeContext>;
+  module: ModuleDefinition;
   globals: Environment;
   enums: Map<string, EnumDefinition>;
   enumValues: Set<string>;
@@ -59,7 +63,6 @@ interface RuntimeContext {
   overrides: ExportOverrides;
   inputOverrides: ExportOverrides;
   inputs: Map<string, ProgramField & Located>;
-  steps: number;
 }
 
 interface ReturnSignal {
@@ -76,93 +79,76 @@ export function validateSource(source: string): void {
 }
 
 export function inspectSource(source: string): ExportField[] {
-  const statements = parseSource(source);
-  const enums = collectEnums(statements);
-  const enumValues = new Set(Array.from(enums.values()).flatMap((item) => item.values));
-  const globals = new Environment();
-  const context: RuntimeContext = {
-    output: [], globals, enums, enumValues, functions: collectFunctions(statements), overrides: {}, inputOverrides: {}, inputs: new Map(), steps: 0
-  };
-
-  const fields: ExportField[] = [];
-
-  for (const statement of statements) {
-    if (statement.kind === 'enum' || statement.kind === 'function' || statement.kind === 'button') continue;
-    if (statement.kind !== 'declare') continue;
-
-    const value = evaluate(statement.value, globals, context);
-    assertType(statement.typeName, value, statement.name, statement.line, statement.column, enums);
-    globals.declare(statement.name, statement.typeName, value, statement.line, statement.column);
-
-    if (statement.exposure !== 'export') continue;
-    fields.push({
-      name: statement.name,
-      typeName: statement.typeName,
-      control: controlForType(statement.typeName, enums),
-      defaultValue: cloneExportValue(value, statement.line, statement.column),
-      options: enums.get(statement.typeName)?.values
-    });
-  }
-
-  return fields;
+  return compileSource(source).modules.flatMap(m => m.exports);
 }
 
-/** A parsed, initialized program. UI edits and button actions share its globals. */
-export class ProgramSession {
-  private readonly context: RuntimeContext;
-  private readonly buttons = new Map<string, Extract<Statement, { kind: 'button' }>>();
+/** Mutable state belongs to one session; Programs are reusable immutable values. */
+export class RuntimeSession {
+  private readonly contexts = new Map<string, RuntimeContext>();
+  private readonly buttons = new Map<string, { statement: Extract<Statement, {kind: 'button'}>; context: RuntimeContext }>();
+  private readonly shared: RuntimeContext['shared'];
+  readonly program: Program;
 
-  constructor(source: string, options: ProgramOptions = {}) {
-    const statements = parseSource(source);
-    const enums = collectEnums(statements);
-    this.context = {
-      output: [], globals: new Environment(), enums,
-      enumValues: new Set(Array.from(enums.values()).flatMap((item) => item.values)),
-      functions: collectFunctions(statements),
-      overrides: options.exportOverrides ?? {},
-      inputOverrides: options.inputOverrides ?? {},
-      inputs: new Map(), steps: 0
-    };
-    for (const statement of statements) {
-      if (statement.kind === 'button') this.buttons.set('button-' + this.buttons.size, statement);
+  constructor(program: Program, options: ProgramOptions = {}) {
+    this.program = program;
+    this.shared = { output: [], outputBytes: 0, truncated: false, steps: 0, depth: 0, deadline: Date.now() + 2000,
+      cancelled: options.cancelled ?? (() => false), maxSteps: options.maxSteps ?? MAX_STEPS, lastSpan: pointSpan(program.entryId) };
+    for (const module of program.modules) {
+      const enums = collectEnums(module.statements);
+      const moduleOptions = options.modules?.[module.id] ?? (module.id === program.entryId ? options : {});
+      const context: RuntimeContext = {
+        shared: this.shared, module, imports: new Map(), globals: new Environment(), enums,
+        enumValues: new Set(Array.from(enums.values()).flatMap(e => e.values)), functions: collectFunctions(module.statements),
+        overrides: moduleOptions.exportOverrides ?? {}, inputOverrides: moduleOptions.inputOverrides ?? {}, inputs: new Map()
+      };
+      this.contexts.set(module.id, context);
+      for (const statement of module.statements) if (statement.kind === 'button') {
+        const prefix = module.id === program.entryId ? '' : module.id + ':';
+        this.buttons.set(prefix + 'button-' + [...this.buttons.values()].filter(b => b.context === context).length, { statement, context });
+      }
     }
-    executeStatements(statements, this.context.globals, this.context, true);
+    for (const context of this.contexts.values()) for (const [alias, id] of Object.entries(context.module.imports)) context.imports.set(alias, this.contexts.get(id)!);
+    this.action(() => { for (const context of this.contexts.values()) executeStatements(context.module.statements, context.globals, context, true); });
   }
 
+  private action(work: () => void) {
+    this.shared.steps = 0; this.shared.depth = 0; this.shared.deadline = Date.now() + 2000;
+    try { work(); } catch (error) {
+      if (error instanceof LanguageError && error.span.start.offset === 0 && error.span.end.offset === 0) error.span = this.shared.lastSpan;
+      throw error;
+    }
+  }
+  private inputKey(context: RuntimeContext, name: string) { return context.module.id === this.program.entryId ? name : context.module.id + ':' + name; }
   snapshot(): ProgramSnapshot {
-    const inputValues: ExportOverrides = Object.create(null);
-    for (const name of this.context.inputs.keys()) {
-      inputValues[name] = this.context.globals.get(name)!.value as ExportValue;
+    const inputValues: ExportOverrides = Object.create(null); const inputs: ProgramField[] = [];
+    for (const context of this.contexts.values()) for (const [name, field] of context.inputs) {
+      const key = this.inputKey(context, name);
+      inputValues[key] = context.globals.get(name)!.value as ExportValue;
+      inputs.push({ ...field, name: key, label: name, fileId: context.module.id, path: context.module.path });
     }
-    return structuredClone({
-      inputs: Array.from(this.context.inputs.values()),
-      inputValues,
-      buttons: Array.from(this.buttons, ([id, button]) => ({ id, label: button.label })),
-      output: this.context.output
-    });
+    return structuredClone({ inputs, inputValues, buttons: Array.from(this.buttons, ([id, b]) => ({ id, label: b.statement.label })), output: this.shared.output });
   }
-
-  /** Validate before mutation; unknown/stale controls cannot create variables. */
-  setInput(name: string, value: unknown): void {
-    const field = this.context.inputs.get(name);
-    if (!field) throw new LanguageError('Unknown input "' + name + '".', 1, 1);
-    if (!isLanguageValue(value)) throw new LanguageError('Inputs must contain language values (no objects or non-finite numbers).', field.line, field.column);
-    assertType(field.typeName, value, name, field.line, field.column, this.context.enums);
-    this.context.globals.set(name, structuredClone(value), field.line, field.column);
+  setInput(key: string, value: unknown): void {
+    for (const context of this.contexts.values()) for (const [name, field] of context.inputs) {
+      if (this.inputKey(context, name) !== key) continue;
+      if (!isLanguageValue(value)) throw new LanguageError('Inputs must contain language values (no objects or non-finite numbers).', field.line, field.column, field.span);
+      assertResourceValue(value, field);
+      assertType(field.typeName, value, name, field.line, field.column, context.enums);
+      context.globals.set(name, structuredClone(value), field.line, field.column); return;
+    }
+    throw new LanguageError('Unknown input "' + key + '".', 1, 1);
   }
-
   pressButton(id: string): void {
     const button = this.buttons.get(id);
     if (!button) throw new LanguageError('Unknown button "' + id + '".', 1, 1);
-    // Each action has its own budget and local scope, but shares program globals.
-    // Completed statements (and prints) remain observable if a later statement fails.
-    this.context.steps = 0;
-    executeStatements(button.body, new Environment(this.context.globals), this.context, true);
+    this.action(() => executeStatements(button.statement.body, new Environment(button.context.globals), button.context, true));
   }
+  clearOutput(): void { this.shared.output = []; this.shared.outputBytes = 0; this.shared.truncated = false; }
+}
 
-  clearOutput(): void {
-    this.context.output = [];
-  }
+/** Compatibility facade for single-source callers. The IDE uses compiled Programs. */
+export class ProgramSession extends RuntimeSession {
+  constructor(source: string, options: ProgramOptions = {}) { super(compileSource(source), options); }
 }
 
 export function runSource(source: string, overrides: ExportOverrides = {}): RunResult {
@@ -198,9 +184,10 @@ function collectFunctions(statements: Statement[]): Map<string, FunctionDefiniti
 
 function executeStatements(statements: Statement[], env: Environment, context: RuntimeContext, topLevel = false): ReturnSignal | null {
   for (const statement of statements) {
+    context.shared.lastSpan = statement.span;
     tick(context, statement.line, statement.column);
 
-    if (statement.kind === 'enum' || statement.kind === 'function' || statement.kind === 'button') continue;
+    if (statement.kind === 'import' || statement.kind === 'enum' || statement.kind === 'function' || statement.kind === 'button') continue;
 
     if (statement.kind === 'declare') {
       let value = evaluate(statement.value, env, context);
@@ -211,7 +198,7 @@ function executeStatements(statements: Statement[], env: Environment, context: R
           control: controlForType(statement.typeName, context.enums),
           defaultValue: cloneExportValue(value, statement.line, statement.column),
           options: context.enums.get(statement.typeName)?.values,
-          line: statement.line, column: statement.column
+          line: statement.line, column: statement.column, span: statement.span
         });
       }
       const overrides = statement.exposure === 'input' ? context.inputOverrides : context.overrides;
@@ -234,7 +221,7 @@ function executeStatements(statements: Statement[], env: Environment, context: R
     }
 
     if (statement.kind === 'print') {
-      context.output.push(statement.values.map((value) => format(evaluate(value, env, context))).join(' '));
+      appendOutput(context, statement.values.map((value) => format(evaluate(value, env, context))).join(' '));
       continue;
     }
 
@@ -267,7 +254,8 @@ function executeStatements(statements: Statement[], env: Environment, context: R
 
     if (statement.kind === 'while') {
       while (asBoolean(evaluate(statement.condition, env, context), statement.condition.line, statement.condition.column)) {
-        tick(context, statement.line, statement.column);
+        context.shared.lastSpan = statement.span;
+    tick(context, statement.line, statement.column);
         const result = executeStatements(statement.body, new Environment(env), context, topLevel);
         if (result) return result;
       }
@@ -280,7 +268,8 @@ function executeStatements(statements: Statement[], env: Environment, context: R
         throw new LanguageError('for each expects an array.', statement.line, statement.column);
       }
       for (const value of iterable) {
-        tick(context, statement.line, statement.column);
+        context.shared.lastSpan = statement.span;
+    tick(context, statement.line, statement.column);
         const loopEnv = new Environment(env);
         loopEnv.declare(statement.itemName, inferType(value), value, statement.line, statement.column);
         const result = executeStatements(statement.body, loopEnv, context, topLevel);
@@ -298,7 +287,8 @@ function executeStatements(statements: Statement[], env: Environment, context: R
       }
       const condition = step > 0 ? (value: number) => value <= end : (value: number) => value >= end;
       for (let value = start; condition(value); value += step) {
-        tick(context, statement.line, statement.column);
+        context.shared.lastSpan = statement.span;
+    tick(context, statement.line, statement.column);
         assertType(statement.typeName, value, statement.itemName, statement.line, statement.column, context.enums);
         const loopEnv = new Environment(env);
         loopEnv.declare(statement.itemName, statement.typeName, value, statement.line, statement.column);
@@ -312,6 +302,18 @@ function executeStatements(statements: Statement[], env: Environment, context: R
 }
 
 function evaluate(expression: Expression, env: Environment, context: RuntimeContext): Value {
+  context.shared.lastSpan = expression.span;
+  try {
+    const value = evaluateValue(expression, env, context);
+    assertResourceValue(value, expression);
+    return value;
+  } catch (error) {
+    if (error instanceof LanguageError && error.span.start.offset === 0 && error.span.end.offset === 0) error.span = expression.span;
+    throw error;
+  }
+}
+
+function evaluateValue(expression: Expression, env: Environment, context: RuntimeContext): Value {
   tick(context, expression.line, expression.column);
 
   if (expression.kind === 'literal') return expression.value;
@@ -396,7 +398,13 @@ function callFunction(expression: Extract<Expression, { kind: 'call' }>, env: En
     return Math.floor(Math.random() * (maximum - minimum + 1)) + minimum;
   }
 
-  const definition = context.functions.get(expression.name);
+  let target = context; let name = expression.name;
+  if (name.includes('.')) {
+    const [alias, member] = name.split('.');
+    target = context.imports.get(alias)!; name = member;
+  }
+  const definition = target?.functions.get(name);
+  if (target !== context && !definition?.statement.public) throw new LanguageError('Function is not public.', expression.line, expression.column, expression.span);
   if (!definition) throw new LanguageError('Unknown function "' + expression.name + '".', expression.line, expression.column);
 
   const fn = definition.statement;
@@ -408,15 +416,17 @@ function callFunction(expression: Extract<Expression, { kind: 'call' }>, env: En
     );
   }
 
-  const functionEnv = new Environment(context.globals);
+  const functionEnv = new Environment(target.globals);
   fn.parameters.forEach((parameter, index) => {
     const value = evaluate(expression.args[index], env, context);
-    assertType(parameter.typeName, value, parameter.name, parameter.line, parameter.column, context.enums);
+    assertType(parameter.typeName, value, parameter.name, parameter.line, parameter.column, target.enums);
     functionEnv.declare(parameter.name, parameter.typeName, value, parameter.line, parameter.column);
   });
 
-  const result = executeStatements(fn.body, functionEnv, context);
-  return result?.value ?? null;
+  context.shared.depth++;
+  if (context.shared.depth > 128) throw new LanguageError('Call depth limit exceeded.', expression.line, expression.column, expression.span);
+  try { return executeStatements(fn.body, functionEnv, target)?.value ?? null; }
+  finally { context.shared.depth--; }
 }
 
 function numberOperation(left: Value, right: Value, operation: (a: number, b: number) => number, name: string, location: Located): number {
@@ -495,8 +505,30 @@ function format(value: Value): string {
 }
 
 function tick(context: RuntimeContext, line: number, column: number) {
-  context.steps += 1;
-  if (context.steps > MAX_STEPS) {
+  context.shared.steps += 1;
+  if (context.shared.cancelled()) throw new LanguageError('Program stopped.', line, column, context.shared.lastSpan);
+  if (Date.now() > context.shared.deadline) throw new LanguageError('Execution time limit exceeded.', line, column, context.shared.lastSpan);
+  if (context.shared.steps > context.shared.maxSteps) {
     throw new LanguageError('Program stopped after too many operations. Check for an endless loop.', line, column);
   }
+}
+
+function appendOutput(context: RuntimeContext, text: string) {
+  if (context.shared.truncated) return;
+  const line = text.slice(0, 8192);
+  if (context.shared.output.length >= 1000 || context.shared.outputBytes + line.length > 256_000) {
+    context.shared.output.push('[Output limit reached; clear output to resume logging.]'); context.shared.truncated = true; return;
+  }
+  context.shared.output.push(line); context.shared.outputBytes += line.length;
+}
+function assertResourceValue(value: Value, at: Located) {
+  let count = 0; let size = 0;
+  function visit(v: Value, depth: number) {
+    size += typeof v === 'string' ? v.length : 8;
+    if (size > 1_000_000 || ++count > 20_000 || depth > 64 || (typeof v === 'string' && v.length > 65_536) || (Array.isArray(v) && v.length > 10_000)) {
+      throw new LanguageError('Value exceeds runtime resource limits.', at.line, at.column, at.span);
+    }
+    if (Array.isArray(v)) v.forEach(x => visit(x, depth + 1));
+  }
+  visit(value, 0);
 }

@@ -3,6 +3,10 @@ import type { ExportOverrides, ExportValue, Value } from './ast';
 /** Shared UI metadata. Components never need access to the AST or interpreter. */
 export interface ProgramField {
   name: string;
+  label?: string;
+  fileId?: string;
+  path?: string;
+  computedDefault?: boolean;
   typeName: string;
   control: 'number' | 'text' | 'boolean' | 'enum' | 'array';
   defaultValue: ExportValue;
@@ -17,6 +21,9 @@ export interface ProgramButton {
 export interface ProgramOptions {
   exportOverrides?: ExportOverrides;
   inputOverrides?: ExportOverrides;
+  modules?: Record<string, { exportOverrides?: ExportOverrides; inputOverrides?: ExportOverrides }>;
+  cancelled?: () => boolean;
+  maxSteps?: number;
 }
 
 export interface ProgramSnapshot {
