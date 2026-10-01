@@ -1,9 +1,33 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Code2, FileCode2, FilePlus2, Files, Play, Save, TerminalSquare, Trash2, X } from 'lucide-react';
+import {
+  Code2,
+  FileCode2,
+  FilePlus2,
+  Files,
+  Play,
+  RotateCcw,
+  Save,
+  SlidersHorizontal,
+  TerminalSquare,
+  Trash2,
+  X
+} from 'lucide-react';
 import { Editor } from './Editor';
 import { db, ensureStarterFile, type CodeFile } from './db';
 import { LanguageError } from './language/lexer';
-import { runSource } from './language/runtime';
+import {
+  inspectSource,
+  runSource,
+  type ExportField,
+  type ExportOverrides,
+  type ExportValue
+} from './language/runtime';
+
+function labelFor(name: string) {
+  return name
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/^./, (char) => char.toUpperCase());
+}
 
 export default function App() {
   const [files, setFiles] = useState<CodeFile[]>([]);
@@ -11,6 +35,7 @@ export default function App() {
   const [output, setOutput] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [explorerOpen, setExplorerOpen] = useState(false);
+  const [inspectorOpen, setInspectorOpen] = useState(false);
   const [consoleOpen, setConsoleOpen] = useState(true);
   const [saved, setSaved] = useState(true);
   const saveTimer = useRef<number | null>(null);
@@ -19,6 +44,16 @@ export default function App() {
     () => files.find((file) => file.id === activeId) || files[0] || null,
     [files, activeId]
   );
+
+  const exportAnalysis = useMemo(() => {
+    if (!activeFile) return { fields: [] as ExportField[], error: null as string | null };
+    try {
+      return { fields: inspectSource(activeFile.content), error: null };
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : 'Unable to read exported values.';
+      return { fields: [] as ExportField[], error: message };
+    }
+  }, [activeFile?.content]);
 
   useEffect(() => {
     let cancelled = false;
@@ -33,7 +68,6 @@ export default function App() {
     return () => { cancelled = true; };
   }, []);
 
-
   const updateCode = useCallback((content: string) => {
     if (!activeFile) return;
     const updatedAt = Date.now();
@@ -47,13 +81,23 @@ export default function App() {
     }, 350);
   }, [activeFile]);
 
+  const updateOverride = useCallback(async (name: string, value: ExportValue | undefined) => {
+    if (!activeFile) return;
+    const next: ExportOverrides = { ...(activeFile.exportOverrides || {}) };
+    if (value === undefined) delete next[name];
+    else next[name] = value;
+
+    setFiles((current) => current.map((file) => file.id === activeFile.id ? { ...file, exportOverrides: next } : file));
+    await db.files.update(activeFile.id, { exportOverrides: next });
+  }, [activeFile]);
+
   const run = useCallback(() => {
     if (!activeFile) return;
     setError(null);
     setConsoleOpen(true);
 
     try {
-      const result = runSource(activeFile.content);
+      const result = runSource(activeFile.content, activeFile.exportOverrides || {});
       setOutput(result.output.length ? result.output : ['Program finished with no output.']);
     } catch (caught) {
       if (caught instanceof LanguageError) {
@@ -70,6 +114,7 @@ export default function App() {
       id: crypto.randomUUID(),
       name: 'file' + (files.length + 1) + '.lang',
       content: 'print("Hello from a new file.").',
+      exportOverrides: {},
       createdAt: now,
       updatedAt: now
     };
@@ -87,7 +132,6 @@ export default function App() {
     setFiles(remaining);
     if (activeId === id) setActiveId(remaining[0]?.id || null);
   }, [activeId, files]);
-
 
   const Explorer = ({ mobile = false }: { mobile?: boolean }) => (
     <aside className="flex h-full min-h-0 flex-col border-r border-[#21262d] bg-[#0d1117]">
@@ -126,7 +170,123 @@ export default function App() {
       </div>
 
       <div className="border-t border-[#21262d] p-3 text-[11px] leading-5 text-[#6e7681]">
-        Files are saved locally with IndexedDB.
+        Files and Inspector overrides are saved locally with IndexedDB.
+      </div>
+    </aside>
+  );
+
+  const Inspector = ({ mobile = false }: { mobile?: boolean }) => (
+    <aside className="flex h-full min-h-0 flex-col border-l border-[#21262d] bg-[#0d1117]">
+      <div className="flex h-11 items-center justify-between border-b border-[#21262d] px-3">
+        <div className="flex items-center gap-2">
+          <SlidersHorizontal size={15} className="text-[#8b949e]" />
+          <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8b949e]">Inspector</span>
+        </div>
+        {mobile && (
+          <button type="button" onClick={() => setInspectorOpen(false)} className="grid h-8 w-8 place-items-center rounded-md text-[#8b949e] hover:bg-[#161b22] hover:text-white" aria-label="Close inspector">
+            <X size={17} />
+          </button>
+        )}
+      </div>
+
+      <div className="ide-scrollbar min-h-0 flex-1 overflow-y-auto p-3">
+        {exportAnalysis.error ? (
+          <div className="rounded-lg border border-[#f851493d] bg-[#f8514914] p-3 text-xs leading-5 text-[#ff7b72]">
+            Fix the language error before Inspector fields can be generated.<br />
+            <span className="text-[#8b949e]">{exportAnalysis.error}</span>
+          </div>
+        ) : exportAnalysis.fields.length === 0 ? (
+          <div className="rounded-lg border border-[#21262d] bg-[#161b22] p-3 text-xs leading-5 text-[#8b949e]">
+            Nothing exported yet. Add something like <span className="font-mono text-[#c9d1d9]">export integer: score = 0.</span>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {exportAnalysis.fields.map((field) => {
+              const overrides = activeFile?.exportOverrides || {};
+              const hasOverride = Object.prototype.hasOwnProperty.call(overrides, field.name);
+              const current = hasOverride ? overrides[field.name] : field.defaultValue;
+
+              return (
+                <div key={field.name} className="rounded-lg border border-[#21262d] bg-[#0b0f14] p-3">
+                  <div className="mb-2 flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="truncate text-xs font-medium text-[#f0f6fc]">{labelFor(field.name)}</div>
+                      <div className="mt-0.5 text-[10px] uppercase tracking-wide text-[#6e7681]">{field.typeName}</div>
+                    </div>
+                    {hasOverride && (
+                      <button type="button" onClick={() => updateOverride(field.name, undefined)} className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-[#8b949e] hover:bg-[#161b22] hover:text-white" aria-label={'Reset ' + field.name + ' to default'}>
+                        <RotateCcw size={14} />
+                      </button>
+                    )}
+                  </div>
+
+                  {field.control === 'number' && (
+                    <input
+                      type="number"
+                      step="1"
+                      value={typeof current === 'number' ? current : 0}
+                      onChange={(event) => {
+                        const value = Number(event.target.value);
+                        if (Number.isInteger(value)) void updateOverride(field.name, value);
+                      }}
+                      className="h-10 w-full rounded-md border border-[#30363d] bg-[#0d1117] px-3 text-sm text-[#f0f6fc] outline-none focus:border-[#58a6ff]"
+                    />
+                  )}
+
+                  {field.control === 'text' && (
+                    <input
+                      type="text"
+                      value={typeof current === 'string' ? current : ''}
+                      onChange={(event) => void updateOverride(field.name, event.target.value)}
+                      className="h-10 w-full rounded-md border border-[#30363d] bg-[#0d1117] px-3 text-sm text-[#f0f6fc] outline-none focus:border-[#58a6ff]"
+                    />
+                  )}
+
+                  {field.control === 'boolean' && (
+                    <label className="flex min-h-10 items-center justify-between rounded-md border border-[#30363d] bg-[#0d1117] px-3 text-sm">
+                      <span>{current === true ? 'True' : 'False'}</span>
+                      <input
+                        type="checkbox"
+                        checked={current === true}
+                        onChange={(event) => void updateOverride(field.name, event.target.checked)}
+                        className="h-5 w-5 accent-[#238636]"
+                      />
+                    </label>
+                  )}
+
+                  {field.control === 'enum' && (
+                    <select
+                      value={typeof current === 'string' ? current : String(field.defaultValue)}
+                      onChange={(event) => void updateOverride(field.name, event.target.value)}
+                      className="h-10 w-full rounded-md border border-[#30363d] bg-[#0d1117] px-3 text-sm text-[#f0f6fc] outline-none focus:border-[#58a6ff]"
+                    >
+                      {(field.options || []).map((option) => <option key={option} value={option}>{option}</option>)}
+                    </select>
+                  )}
+
+                  {field.control === 'array' && (
+                    <textarea
+                      key={field.name + JSON.stringify(current)}
+                      defaultValue={JSON.stringify(current)}
+                      onBlur={(event) => {
+                        try {
+                          const value = JSON.parse(event.target.value) as unknown;
+                          if (Array.isArray(value)) void updateOverride(field.name, value as ExportValue);
+                        } catch {
+                          event.target.value = JSON.stringify(current);
+                        }
+                      }}
+                      rows={3}
+                      className="w-full resize-y rounded-md border border-[#30363d] bg-[#0d1117] px-3 py-2 font-mono text-xs text-[#f0f6fc] outline-none focus:border-[#58a6ff]"
+                    />
+                  )}
+
+                  <div className="mt-2 text-[10px] text-[#6e7681]">{hasOverride ? 'Inspector override' : 'Code default'}</div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </aside>
   );
@@ -151,6 +311,9 @@ export default function App() {
             </div>
           </div>
 
+          <button type="button" onClick={() => setInspectorOpen(true)} className="grid h-10 w-10 place-items-center rounded-lg border border-[#30363d] text-[#b1bac4] hover:bg-[#161b22] lg:hidden" aria-label="Open inspector">
+            <SlidersHorizontal size={17} />
+          </button>
 
           <button type="button" onClick={run} className="flex h-10 items-center gap-2 rounded-lg bg-[#238636] px-3.5 text-sm font-semibold text-white hover:bg-[#2ea043]">
             <Play size={16} fill="currentColor" /> Run
@@ -201,6 +364,8 @@ export default function App() {
             )}
           </section>
         </main>
+
+        <div className="hidden w-72 shrink-0 lg:block"><Inspector /></div>
       </div>
 
       <footer className="safe-bottom flex min-h-6 shrink-0 items-center justify-between gap-3 bg-[#0d419d] px-2.5 py-1 text-[10px] text-white sm:text-[11px]">
@@ -212,6 +377,13 @@ export default function App() {
         <div className="fixed inset-0 z-50 md:hidden">
           <button type="button" className="absolute inset-0 bg-black/60" onClick={() => setExplorerOpen(false)} aria-label="Close explorer" />
           <div className="absolute inset-y-0 left-0 w-[82%] max-w-[320px] shadow-2xl"><Explorer mobile /></div>
+        </div>
+      )}
+
+      {inspectorOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden">
+          <button type="button" className="absolute inset-0 bg-black/60" onClick={() => setInspectorOpen(false)} aria-label="Close inspector" />
+          <div className="absolute inset-y-0 right-0 w-[86%] max-w-[360px] shadow-2xl"><Inspector mobile /></div>
         </div>
       )}
     </div>
