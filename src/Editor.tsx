@@ -7,18 +7,22 @@ import { autocompletion, completeFromList } from '@codemirror/autocomplete';
 import { linter, lintGutter, type Diagnostic } from '@codemirror/lint';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { KEYWORDS, LanguageError, tokenize } from './language/lexer';
-import { runSource } from './language/runtime';
+import { validateSource } from './language/runtime';
 
 const language = StreamLanguage.define({
   token(stream) {
     if (stream.eatSpace()) return null;
-    if (stream.match(/^"[^"\n]*"/)) return 'string';
+    if (stream.match(/^"(?:\\.|[^"\n])*"/)) return 'string';
     if (stream.match(/^\d+(?:\.\d+)?/)) return 'number';
 
     const char = stream.peek();
-    if (char && '=.,()[]'.includes(char)) {
+    if (char && '=+-*/'.includes(char)) {
       stream.next();
-      return char === '=' ? 'operator' : 'punctuation';
+      return 'operator';
+    }
+    if (char && ':.,()[]'.includes(char)) {
+      stream.next();
+      return 'punctuation';
     }
 
     if (stream.match(/^[A-Za-z][A-Za-z0-9]*/)) {
@@ -34,9 +38,16 @@ const language = StreamLanguage.define({
 const completions = completeFromList([
   ...Array.from(KEYWORDS).map((label) => ({ label, type: 'keyword' })),
   { label: 'print()', type: 'function', apply: 'print().' },
-  { label: 'integer score = 0.', type: 'text' },
-  { label: 'text name = "Lyra".', type: 'text' },
-  { label: 'array items = [].', type: 'text' }
+  { label: 'integer:', type: 'type', apply: 'integer: ' },
+  { label: 'text:', type: 'type', apply: 'text: ' },
+  { label: 'boolean:', type: 'type', apply: 'boolean: ' },
+  { label: 'array:', type: 'type', apply: 'array: ' },
+  { label: 'export integer:', type: 'keyword', apply: 'export integer: ' },
+  { label: 'enum', type: 'keyword', apply: 'enum Name [first, second].' },
+  { label: 'if', type: 'keyword', apply: 'if condition is true, do.\n    \nend if.' },
+  { label: 'while', type: 'keyword', apply: 'while condition is true, do.\n    \nend while.' },
+  { label: 'for each', type: 'keyword', apply: 'for each item in items, do.\n    \nend for.' },
+  { label: 'function', type: 'keyword', apply: 'function name().\n    \nend function.' }
 ]);
 
 function positionFor(source: string, line: number, column: number) {
@@ -52,7 +63,7 @@ const languageLinter = linter((view) => {
 
   try {
     tokenize(source);
-    if (source.trim()) runSource(source);
+    if (source.trim()) validateSource(source);
     return [];
   } catch (error) {
     if (!(error instanceof LanguageError)) return [];
@@ -65,7 +76,7 @@ const languageLinter = linter((view) => {
     };
     return [diagnostic];
   }
-}, { delay: 450 });
+}, { delay: 350 });
 
 interface EditorProps {
   value: string;
