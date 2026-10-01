@@ -38,6 +38,7 @@ const language = StreamLanguage.define({
 const completions = completeFromList([
   ...Array.from(KEYWORDS).map((label) => ({ label, type: 'keyword' })),
   { label: 'print()', type: 'function', apply: 'print().' },
+  { label: 'randomInteger()', type: 'function', apply: 'randomInteger(1, 6)' },
   { label: 'integer:', type: 'type', apply: 'integer: ' },
   { label: 'text:', type: 'type', apply: 'text: ' },
   { label: 'boolean:', type: 'type', apply: 'boolean: ' },
