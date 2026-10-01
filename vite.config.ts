@@ -5,6 +5,8 @@ import { VitePWA } from 'vite-plugin-pwa';
 const repoName = 'test-programming-language';
 const isGitHubPages = process.env.GITHUB_PAGES === 'true';
 const base = isGitHubPages ? `/${repoName}/` : '/';
+const appId = `${base}language-lab`;
+const startUrl = `${base}?source=pwa`;
 
 export default defineConfig({
   base,
@@ -12,6 +14,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      manifestFilename: 'language-lab.webmanifest',
       includeAssets: [
         'pwa-192x192.png',
         'pwa-512x512.png',
@@ -19,25 +22,26 @@ export default defineConfig({
         'pwa-maskable-512x512.png'
       ],
       manifest: {
-        id: base,
+        id: appId,
         name: 'Language Lab',
         short_name: 'Language Lab',
         description: 'A mobile-friendly IDE for an executable pseudocode programming language.',
         theme_color: '#0b0f14',
         background_color: '#0b0f14',
         display: 'standalone',
+        display_override: ['standalone', 'minimal-ui'],
         orientation: 'any',
-        start_url: base,
+        start_url: startUrl,
         scope: base,
         icons: [
-          { src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
-          { src: 'pwa-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
-          { src: 'pwa-maskable-192x192.png', sizes: '192x192', type: 'image/png', purpose: 'maskable' },
-          { src: 'pwa-maskable-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' }
+          { src: `${base}pwa-192x192.png`, sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: `${base}pwa-512x512.png`, sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: `${base}pwa-maskable-192x192.png`, sizes: '192x192', type: 'image/png', purpose: 'maskable' },
+          { src: `${base}pwa-maskable-512x512.png`, sizes: '512x512', type: 'image/png', purpose: 'maskable' }
         ]
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,json,woff2}'],
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,json,woff2,webmanifest}'],
         navigateFallback: `${base}index.html`,
         cleanupOutdatedCaches: true
       },
