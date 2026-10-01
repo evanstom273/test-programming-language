@@ -163,3 +163,7 @@ The language does not yet provide:
 ## Data and graphics built-ins
 
 `Resource`, `loadResource`, `parseJSON`, `toJSON`, `Vector2`, `Vector3`, `Color`, `length`, `normalized`, and `dot` are documented in [GDScript-inspired features](gdscript-inspiration.md). These names are reserved and cannot be redefined.
+
+## Comments, loop control and standard helpers
+
+See [General coding improvements](coding-improvements.md) for supported `#`/`/* */` comments, `break.`, `continue.`, typed return-path checks, and text/math built-ins.

@@ -284,3 +284,7 @@ Reasons:
 ## Typed data and events extension
 
 See [GDScript-inspired features](gdscript-inspiration.md) for supported annotations, float/collection/record/resource controls, lifecycle events, signals, and worker scheduling. These extend the existing export/input/button model.
+
+## Comments, loop control and standard helpers
+
+See [General coding improvements](coding-improvements.md) for supported `#`/`/* */` comments, `break.`, `continue.`, typed return-path checks, and text/math built-ins.

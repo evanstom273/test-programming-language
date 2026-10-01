@@ -1,9 +1,89 @@
 import type { Value } from './ast';
 import { isVector } from './types';
+import { VALUE_LIMITS } from './program';
 export function primitive(name: string, args: Value[]): Value {
   const fail = (message: string): never => {
     throw new Error(message);
   };
+  if (
+    ['abs', 'floor', 'ceil', 'round', 'min', 'max', 'clamp', 'lerp'].includes(
+      name,
+    )
+  ) {
+    if (!args.every((v) => typeof v === 'number' && Number.isFinite(v)))
+      fail(name + ' expects finite numbers.');
+    const [a, b, c] = args as number[];
+    if (name === 'clamp' && b > c) fail('clamp minimum cannot exceed maximum.');
+    const value =
+      name === 'abs'
+        ? Math.abs(a)
+        : name === 'floor'
+          ? Math.floor(a)
+          : name === 'ceil'
+            ? Math.ceil(a)
+            : name === 'round'
+              ? Math.round(a)
+              : name === 'min'
+                ? Math.min(a, b)
+                : name === 'max'
+                  ? Math.max(a, b)
+                  : name === 'clamp'
+                    ? Math.min(c, Math.max(b, a))
+                    : a + (b - a) * c;
+    if (!Number.isFinite(value)) fail(name + ' result must be finite.');
+    return value;
+  }
+  if (['trim', 'lower', 'upper', 'split', 'contains'].includes(name)) {
+    if (
+      typeof args[0] !== 'string' ||
+      (args.length > 1 && typeof args[1] !== 'string')
+    )
+      fail(name + ' expects text arguments.');
+    const [a, b] = args as string[];
+    if (name === 'trim') return a.trim();
+    if (name === 'lower') return a.toLowerCase();
+    if (name === 'upper') return a.toUpperCase();
+    if (name === 'contains') return a.includes(b);
+    const parts: string[] = [];
+    if (b === '') {
+      for (const character of a) {
+        if (parts.length === VALUE_LIMITS.collection)
+          fail('split exceeds runtime resource limits.');
+        parts.push(character);
+      }
+    } else parts.push(...a.split(b, VALUE_LIMITS.collection + 1));
+    if (parts.length > VALUE_LIMITS.collection)
+      fail('split exceeds runtime resource limits.');
+    return parts;
+  }
+  if (name === 'join') {
+    if (
+      !Array.isArray(args[0]) ||
+      !args[0].every((v) => typeof v === 'string') ||
+      typeof args[1] !== 'string'
+    )
+      fail('join expects an array of text and a text separator.');
+    const parts = args[0] as string[],
+      separator = args[1] as string;
+    const length =
+      parts.reduce((n, part) => n + part.length, 0) +
+      Math.max(0, parts.length - 1) * separator.length;
+    if (length > VALUE_LIMITS.text)
+      fail('join exceeds runtime resource limits.');
+    return parts.join(separator);
+  }
+  if (name === 'size') {
+    const value = args[0];
+    if (typeof value === 'string') {
+      let count = 0;
+      for (const _ of value) count++;
+      return count;
+    }
+    if (Array.isArray(value)) return value.length;
+    if (value && typeof value === 'object' && !('$type' in value))
+      return Object.keys(value).length;
+    return fail('size expects text, an array or a dictionary.');
+  }
   if (name === 'Vector2' || name === 'Vector3') {
     if (!args.every((v) => typeof v === 'number' && Number.isFinite(v)))
       fail(name + ' expects finite numbers.');
