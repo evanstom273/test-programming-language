@@ -24,6 +24,7 @@ import {
 import {
   isLanguageValue,
   type ProgramField,
+  type ProgramSceneItem,
   type ProgramSnapshot,
   type ProgramOptions,
 } from './program';
@@ -532,22 +533,31 @@ export class RuntimeSession {
       statement: Extract<Statement, { kind: 'scene' }>;
       context: RuntimeContext;
     },
-  ) {
-    return scene.statement.body.flatMap((statement) => {
-      if (statement.kind === 'heading')
-        return [{ kind: 'heading' as const, text: statement.text }];
-      if (statement.kind === 'paragraph')
-        return [{ kind: 'paragraph' as const, text: statement.text }];
-      if (statement.kind === 'stat')
-        return [
-          {
-            kind: 'stat' as const,
-            label: statement.label,
-            value: format(
-              readUiValue(statement.value, scene.context.globals, scene.context),
+  ): ProgramSceneItem[] {
+    const items: ProgramSceneItem[] = [];
+    for (const statement of scene.statement.body) {
+      if (statement.kind === 'heading') {
+        items.push({ kind: 'heading', text: statement.text });
+        continue;
+      }
+      if (statement.kind === 'paragraph') {
+        items.push({ kind: 'paragraph', text: statement.text });
+        continue;
+      }
+      if (statement.kind === 'stat') {
+        items.push({
+          kind: 'stat',
+          label: statement.label,
+          value: format(
+            readUiValue(
+              statement.value,
+              scene.context.globals,
+              scene.context,
             ),
-          },
-        ];
+          ),
+        });
+        continue;
+      }
       if (statement.kind === 'progress') {
         const value = readUiValue(
           statement.value,
@@ -566,18 +576,17 @@ export class RuntimeSession {
             statement.column,
             statement.span,
           );
-        return [
-          {
-            kind: 'progress' as const,
-            label: statement.label,
-            value,
-            maximum,
-          },
-        ];
+        items.push({
+          kind: 'progress',
+          label: statement.label,
+          value,
+          maximum,
+        });
       }
-      return [];
-    });
+    }
+    return items;
   }
+
   setInput(key: string, value: unknown): void {
     for (const context of this.contexts.values())
       for (const [name, field] of context.inputs) {
