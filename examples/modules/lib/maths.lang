@@ -1,0 +1,12 @@
+export integer: factor = 2.
+integer: rolls = 0.
+
+public function double(integer: value).
+    return value * factor.
+end function.
+
+public function roll().
+    rolls = rolls + 1.
+    print("Roll", rolls).
+    return randomInteger(1, 6).
+end function.

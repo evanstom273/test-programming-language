@@ -1,79 +1,147 @@
-import { useRef, useState } from 'react';
-import type { CodeFile } from '../db';
+import { useEffect, useRef, useState } from 'react';
 import { LanguageError } from '../language/lexer';
-import { ProgramSession } from '../language/runtime';
 import type { ProgramSnapshot } from '../language/program';
-import type { ExportOverrides, ExportValue } from '../language/ast';
-
+import type { ExportValue } from '../language/ast';
+import type { ProjectSnapshot } from '../workspace/model';
+import type { RuntimeCommand } from '../runtime/protocol';
+import { RuntimeClient } from '../runtime/client';
+import type { Diagnostic } from '../language/diagnostics';
 export function errorMessage(caught: unknown): string {
-  if (caught instanceof LanguageError) return `Line ${caught.line}, column ${caught.column}\n${caught.message}`;
+  if (caught instanceof LanguageError)
+    return `Line ${caught.line}, column ${caught.column}\n${caught.message}`;
   return caught instanceof Error ? caught.message : 'Unknown runtime error.';
 }
-
-interface ActiveSession {
-  fileId: string;
-  source: string;
-  exports: string;
-  runtime: ProgramSession;
+export function formatDiagnostics(
+  ds: Diagnostic[],
+  project?: ProjectSnapshot | null,
+): string | null {
+  return ds.length
+    ? ds
+        .map(
+          (d) =>
+            `${project?.files.find((f) => f.id === d.span.fileId)?.path ?? d.span.fileId}:${d.span.start.line}:${d.span.start.column} ${d.message}`,
+        )
+        .join('\n')
+    : null;
 }
-
-/** React only dispatches typed actions; parsing, metadata and state live in the runtime. */
-export function useProgramSession(file: CodeFile | null) {
-  const session = useRef<ActiveSession | null>(null);
+export function projectRevision(project: ProjectSnapshot | null) {
+  return project
+    ? JSON.stringify([
+        project.project.id,
+        project.project.entry,
+        project.files.map((f) => [
+          f.id,
+          f.path,
+          f.content,
+          f.kind,
+          f.exportOverrides,
+        ]),
+      ])
+    : '';
+}
+export function useProgramSession(project: ProjectSnapshot | null) {
+  const client = useRef<RuntimeClient | null>(null);
+  const current = useRef(project);
+  current.current = project;
+  const revision = projectRevision(project);
+  const [runRevision, setRunRevision] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<ProgramSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pendingInputs, setPendingInputs] = useState(0);
   const [generation, setGeneration] = useState(0);
-  const exports = JSON.stringify(file?.exportOverrides ?? {});
-  const sameFile = session.current?.fileId === file?.id;
-  const stale = !!session.current && (!sameFile || session.current.source !== file?.content || session.current.exports !== exports);
-
-  function run(inputOverrides: ExportOverrides = file?.inputOverrides ?? {}) {
-    session.current = null;
+  const [status, setStatus] = useState<
+    'idle' | 'running' | 'ready' | 'stopped'
+  >('idle');
+  const epoch = useRef(0);
+  const sequence = useRef(0);
+  const activeProject = useRef<string>();
+  const stale = runRevision !== null && revision !== runRevision;
+  useEffect(
+    () => () => {
+      epoch.current++;
+      client.current?.stop();
+    },
+    [],
+  );
+  useEffect(() => {
+    if (stale) {
+      epoch.current++;
+      client.current?.stop();
+      setStatus('stopped');
+    }
+  }, [stale, revision]);
+  async function dispatch(command: RuntimeCommand, token = epoch.current) {
+    const requestSequence = ++sequence.current;
+    try {
+      const response = await client.current!.request(command);
+      if (token !== epoch.current) return false;
+      if (requestSequence !== sequence.current)
+        return response.diagnostics.length === 0;
+      setSnapshot(response.snapshot ?? null);
+      setError(formatDiagnostics(response.diagnostics, current.current));
+      setStatus(response.snapshot ? 'ready' : 'stopped');
+      return response.diagnostics.length === 0;
+    } catch (caught) {
+      if (token === epoch.current) {
+        setError(errorMessage(caught));
+        setStatus('stopped');
+      }
+      return false;
+    }
+  }
+  function run(replacement?: ProjectSnapshot) {
+    const source = replacement ?? current.current;
+    if (!source) return;
+    const token = ++epoch.current;
+    client.current?.stop();
+    client.current = new RuntimeClient();
+    activeProject.current = source.project.id;
+    setRunRevision(projectRevision(source));
     setSnapshot(null);
     setError(null);
-    setGeneration((value) => value + 1);
-    if (!file) return;
-    try {
-      const runtime = new ProgramSession(file.content, {
-        exportOverrides: file.exportOverrides, inputOverrides
-      });
-      session.current = { fileId: file.id, source: file.content, exports, runtime };
-      setSnapshot(runtime.snapshot());
-    } catch (caught) {
-      setError(errorMessage(caught));
-    }
+    setGeneration((g) => g + 1);
+    setStatus('running');
+    void dispatch({ type: 'run', project: structuredClone(source) }, token);
   }
-
-  function currentRuntime() {
-    if (!session.current || stale) throw new Error('Program changed. Press Run to restart before using controls.');
-    return session.current.runtime;
+  function stop() {
+    epoch.current++;
+    client.current?.stop();
+    setStatus('stopped');
+    setError('Program stopped. Press Run to restart.');
   }
-
-  function setInput(name: string, value: ExportValue) {
-    const runtime = currentRuntime();
-    runtime.setInput(name, value);
-    setSnapshot(runtime.snapshot());
-  }
-
+  const usable = !stale && status === 'ready';
   function pressButton(id: string) {
-    setError(null);
+    if (!usable) return;
+    setStatus('running');
+    void dispatch({ type: 'button', id });
+  }
+  async function setInput(name: string, value: ExportValue) {
+    if (!usable) return false;
+    setSnapshot((s) =>
+      s ? { ...s, inputValues: { ...s.inputValues, [name]: value } } : null,
+    );
+    setPendingInputs((n) => n + 1);
     try {
-      currentRuntime().pressButton(id);
-    } catch (caught) {
-      setError(errorMessage(caught));
+      return await dispatch({ type: 'input', name, value });
     } finally {
-      if (session.current && !stale) setSnapshot(session.current.runtime.snapshot());
+      setPendingInputs((n) => n - 1);
     }
   }
-
   function clearOutput() {
-    session.current?.runtime.clearOutput();
-    if (session.current) setSnapshot(session.current.runtime.snapshot());
-    setError(null);
+    if (usable) void dispatch({ type: 'clear' });
   }
-
   return {
-    snapshot: sameFile ? snapshot : null,
-    error, stale, generation, run, setInput, pressButton, clearOutput
+    snapshot: activeProject.current === project?.project.id ? snapshot : null,
+    error,
+    stale,
+    generation,
+    pendingInputs,
+    status,
+    usable,
+    run,
+    stop,
+    setInput,
+    pressButton,
+    clearOutput,
   };
 }

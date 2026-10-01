@@ -2,27 +2,37 @@ import Dexie, { type EntityTable } from 'dexie';
 import interactiveCalculatorCode from '../examples/interactive-calculator.lang?raw';
 import type { ExportValue, ExportOverrides } from './language/runtime';
 
-export interface CodeFile {
-  id: string;
-  name: string;
-  content: string;
-  exportOverrides?: ExportOverrides;
-  inputOverrides?: ExportOverrides;
-  createdAt: number;
-  updatedAt: number;
-}
-
-class LanguageLabDatabase extends Dexie {
+import type { Project, ProjectFile } from './workspace/model';
+export type CodeFile = ProjectFile;
+export interface StoredRecord { id: string; value: unknown }
+export class LanguageLabDatabase extends Dexie {
   files!: EntityTable<CodeFile, 'id'>;
-
-  constructor() {
-    super('language-lab');
-    this.version(1).stores({
-      files: 'id, name, createdAt, updatedAt'
+  projects!: EntityTable<Project, 'id'>;
+  legacyBackup!: EntityTable<StoredRecord, 'id'>;
+  appData!: EntityTable<StoredRecord, 'id'>;
+  preferences!: EntityTable<StoredRecord, 'id'>;
+  metadata!: EntityTable<StoredRecord, 'id'>;
+  constructor(name = 'language-lab') {
+    super(name);
+    this.version(1).stores({ files: 'id, name, createdAt, updatedAt' });
+    this.version(2).stores({
+      files: 'id, projectId, &[projectId+path], name, createdAt, updatedAt',
+      projects: 'id, name, createdAt', legacyBackup: 'id', appData: 'id', preferences: 'id', metadata: 'id'
+    }).upgrade(async tx => {
+      const files = await tx.table('files').toArray();
+      for (const old of files) {
+        await tx.table('legacyBackup').put({ id: old.id, value: structuredClone(old) });
+        const projectId = 'legacy-' + old.id;
+        // Legacy filenames were unrestricted. Keep their display name and exact source;
+        // choose a safe execution path without changing their stable identity.
+        const path = /^[A-Za-z0-9][A-Za-z0-9._-]*\.lang$/.test(old.name) ? old.name : 'main.lang';
+        await tx.table('projects').add({ id: projectId, name: old.name, entry: path, schemaVersion: 1, createdAt: old.createdAt, updatedAt: old.updatedAt });
+        await tx.table('files').put({ ...old, projectId, path, kind: 'file', revision: 0 });
+      }
+      await tx.table('metadata').put({ id: 'initialized', value: true });
     });
   }
 }
-
 export const db = new LanguageLabDatabase();
 
 export const starterCode = [
@@ -67,68 +77,24 @@ export const calculatorCode = [
   'print(calculate()).'
 ].join('\n');
 
-function migrateLegacyColonSyntax(content: string): string {
-  return content.replace(
-    /^(\s*)(export\s+)?(integer|text|boolean|array)\s+([A-Za-z][A-Za-z0-9]*)\s*=/gim,
-    '$1$2$3: $4 ='
-  );
-}
-
-// Serialize first-run initialization (including React StrictMode's two effects).
-export function ensureStarterFile(): Promise<CodeFile> {
-  return db.transaction('rw', db.files, initializeFiles);
-}
-
-async function initializeFiles(): Promise<CodeFile> {
-  let stored = await db.files.orderBy('updatedAt').reverse().toArray();
-
-  if (!stored.length) {
-    const now = Date.now();
-    const main: CodeFile = {
-      id: crypto.randomUUID(),
-      name: 'main.lang',
-      content: starterCode,
-      exportOverrides: {},
-      createdAt: now,
-      updatedAt: now
-    };
-    await db.files.add(main);
-    stored = [main];
-  }
-
-  for (const file of stored) {
-    const migrated = migrateLegacyColonSyntax(file.content);
-    if (migrated !== file.content) {
-      file.content = migrated;
-      file.updatedAt = Date.now();
-      await db.files.update(file.id, { content: migrated, updatedAt: file.updatedAt });
+// Serialized, once-only seeding. No source rewriting or deleted-example resurrection.
+export async function ensureStarterFile(): Promise<CodeFile | undefined> {
+  return db.transaction('rw', db.files, db.projects, db.metadata, async () => {
+    if (!await db.metadata.get('initialized')) {
+      if (!await db.projects.count()) {
+        for (const [name, content] of [['main.lang', starterCode], ['calculator.lang', calculatorCode], ['interactive-calculator.lang', interactiveCalculatorCode]]) {
+          const now = Date.now(); const projectId = crypto.randomUUID();
+          await db.projects.add({ id: projectId, name, entry: name, schemaVersion: 1, createdAt: now, updatedAt: now });
+          await db.files.add({ id: crypto.randomUUID(), projectId, path: name, name, kind: 'file', content, revision: 0, exportOverrides: {}, inputOverrides: {}, createdAt: now, updatedAt: now });
+        }
+      }
+      await db.metadata.put({ id: 'initialized', value: true });
     }
-  }
-
-  const calculator = await db.files.where('name').equals('calculator.lang').first();
-  if (!calculator) {
-    const now = Date.now();
-    await db.files.add({
-      id: crypto.randomUUID(),
-      name: 'calculator.lang',
-      content: calculatorCode,
-      exportOverrides: {},
-      createdAt: now,
-      updatedAt: now
-    });
-  }
-
-  // A new example name preserves existing calculators and any user edits.
-  if (!await db.files.where('name').equals('interactive-calculator.lang').first()) {
-    const now = Date.now();
-    await db.files.add({
-      id: crypto.randomUUID(), name: 'interactive-calculator.lang',
-      content: interactiveCalculatorCode, exportOverrides: {}, inputOverrides: {},
-      createdAt: now, updatedAt: now
-    });
-  }
-
-  return stored[0];
+    const files = await db.files.orderBy('createdAt').toArray();
+    // Millisecond timestamps can tie during seeding; UUID ordering must not
+    // choose an arbitrary example as the initial entry.
+    return files.find(file => file.path === 'main.lang') ?? files[0];
+  });
 }
 
 export type OverrideKind = 'exportOverrides' | 'inputOverrides';

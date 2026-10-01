@@ -1,13 +1,13 @@
+import { KEYWORDS } from './language/lexer';
 import { useEffect, useRef } from 'react';
 import { basicSetup } from 'codemirror';
 import { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { StreamLanguage } from '@codemirror/language';
 import { autocompletion, completeFromList } from '@codemirror/autocomplete';
-import { linter, lintGutter, type Diagnostic } from '@codemirror/lint';
+import { lintGutter, setDiagnostics } from '@codemirror/lint';
+import type { Diagnostic } from './language/diagnostics';
 import { oneDark } from '@codemirror/theme-one-dark';
-import { KEYWORDS, LanguageError, tokenize } from './language/lexer';
-import { validateSource } from './language/runtime';
 
 const language = StreamLanguage.define({
   token(stream) {
@@ -56,41 +56,14 @@ const completions = completeFromList([
   { label: 'function', type: 'keyword', apply: 'function name().\n    \nend function.' }
 ]);
 
-function positionFor(source: string, line: number, column: number) {
-  const lines = source.split('\n');
-  const safeLine = Math.max(1, Math.min(line, lines.length));
-  let position = 0;
-  for (let i = 0; i < safeLine - 1; i += 1) position += lines[i].length + 1;
-  return Math.min(source.length, position + Math.max(0, column - 1));
-}
-
-const languageLinter = linter((view) => {
-  const source = view.state.doc.toString();
-
-  try {
-    tokenize(source);
-    if (source.trim()) validateSource(source);
-    return [];
-  } catch (error) {
-    if (!(error instanceof LanguageError)) return [];
-    const from = positionFor(source, error.line, error.column);
-    const diagnostic: Diagnostic = {
-      from,
-      to: Math.min(source.length, from + 1),
-      severity: 'error',
-      message: error.message
-    };
-    return [diagnostic];
-  }
-}, { delay: 350 });
-
 interface EditorProps {
   value: string;
+  diagnostics: Diagnostic[];
   onChange: (value: string) => void;
   onRun: () => void;
 }
 
-export function Editor({ value, onChange, onRun }: EditorProps) {
+export function Editor({ value, onChange, onRun, diagnostics }: EditorProps) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const onChangeRef = useRef(onChange);
@@ -110,7 +83,6 @@ export function Editor({ value, onChange, onRun }: EditorProps) {
         language,
         language.data.of({ autocomplete: completions }),
         autocompletion(),
-        languageLinter,
         lintGutter(),
         EditorView.lineWrapping,
         EditorView.domEventHandlers({
@@ -160,6 +132,14 @@ export function Editor({ value, onChange, onRun }: EditorProps) {
     if (current === value) return;
     view.current.dispatch({ changes: { from: 0, to: current.length, insert: value } });
   }, [value]);
+
+  useEffect(() => {
+    if (!view.current) return;
+    const length = view.current.state.doc.length;
+    view.current.dispatch(setDiagnostics(view.current.state, diagnostics.map(d => ({
+      from: Math.min(length, d.span.start.offset), to: Math.min(length, Math.max(d.span.start.offset, d.span.end.offset)), severity: d.severity, message: d.message
+    }))));
+  }, [diagnostics]);
 
   return <div ref={host} className="h-full min-h-0 overflow-hidden" />;
 }
