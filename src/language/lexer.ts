@@ -37,7 +37,7 @@ export class LanguageError extends Error {
 export const KEYWORDS = new Set([
   'import', 'as', 'public', 'integer', 'text', 'array', 'boolean', 'print', 'export', 'input', 'button', 'enum',
   'function', 'return', 'if', 'elif', 'else', 'end', 'do',
-  'while', 'for', 'each', 'in', 'from', 'to', 'step',
+  'while', 'for', 'each', 'in', 'from', 'to', 'step', 'range',
   'plus', 'minus', 'times', 'divided', 'by', 'remainder',
   'is', 'equal', 'not', 'less', 'than', 'greater', 'or', 'and',
   'true', 'false'

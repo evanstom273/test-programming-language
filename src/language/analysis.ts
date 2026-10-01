@@ -493,6 +493,26 @@ function bindModule(
             ),
           );
           break;
+        case 'forPythonRange':
+          for (const argument of s.args) {
+            const type = expression(argument, scope);
+            if (type && type !== 'integer')
+              report(
+                'type',
+                'RANGE_INTEGER',
+                'range expects integer start, stop, and step values.',
+                argument,
+              );
+          }
+          block(
+            s.body,
+            new Scope(scope).bind(
+              s.itemName,
+              'integer',
+              symbol(s.itemName, 'variable', s, 'integer'),
+            ),
+          );
+          break;
         case 'print':
           s.values.forEach((v) => expression(v, scope));
           break;

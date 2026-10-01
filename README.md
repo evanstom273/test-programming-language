@@ -83,7 +83,13 @@ end for.
 for integer: i from 1 to 10, do.
     print(i).
 end for.
+
+for i in range(10), do.
+    print(i).
+end for.
 ```
+
+Python-style `range` loops use an exclusive stop value, matching Python: `range(10)` produces 0 through 9, and `range(1, 10, 2)` produces 1, 3, 5, 7, 9. The existing typed `from ... to ...` form remains inclusive.
 
 ## Functions
 

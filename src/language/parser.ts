@@ -211,7 +211,32 @@ class Parser {
       return { kind: 'forEach', itemName: item.value, iterable, body, line: start.line, column: start.column, span: this.span(start) };
     }
 
-    const type = this.consumeTypeName('Expected each or a typed range variable after for.');
+    if (
+      this.check(TokenType.Identifier) &&
+      this.peekNext().type === TokenType.Keyword &&
+      this.peekNext().value.toLowerCase() === 'in'
+    ) {
+      const item = this.advance();
+      this.consumeKeyword('in', 'Expected in after the loop variable.');
+      const range = this.consumeKeyword('range', 'Expected range(...) after in.');
+      this.consume(TokenType.OpenParen, 'Expected ( after range.');
+      const args = this.argumentList(TokenType.CloseParen);
+      this.consume(TokenType.CloseParen, 'Expected ) after range arguments.');
+      if (args.length < 1 || args.length > 3) {
+        throw new LanguageError(
+          'range expects 1 to 3 arguments: range(stop), range(start, stop), or range(start, stop, step).',
+          range.line,
+          range.column,
+          range.span
+        );
+      }
+      this.consumeDoHeader('range loop');
+      const body = this.blockUntil(() => this.isEndSequence('for'));
+      this.consumeEndSequence('for');
+      return { kind: 'forPythonRange', itemName: item.value, args, body, line: start.line, column: start.column, span: this.span(start) };
+    }
+
+    const type = this.consumeTypeName('Expected each, an inferred range loop, or a typed range variable after for.');
     this.consume(TokenType.Colon, 'Range for loops require a colon after the variable type.');
     const item = this.consume(TokenType.Identifier, 'Expected a range loop variable.');
     this.consumeKeyword('from', 'Expected from in the range loop.');

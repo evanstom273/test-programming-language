@@ -297,6 +297,35 @@ function executeStatements(statements: Statement[], env: Environment, context: R
         if (result) return result;
       }
     }
+
+    if (statement.kind === 'forPythonRange') {
+      const args = statement.args.map((argument) => evaluate(argument, env, context));
+      if (!args.every((value) => typeof value === 'number' && Number.isSafeInteger(value))) {
+        throw new LanguageError('range expects integer start, stop, and step values.', statement.line, statement.column, statement.span);
+      }
+
+      const start = args.length === 1 ? 0 : args[0] as number;
+      const stop = args.length === 1 ? args[0] as number : args[1] as number;
+      const step = args.length === 3 ? args[2] as number : 1;
+
+      if (step === 0) {
+        throw new LanguageError('range step cannot be zero.', statement.line, statement.column, statement.span);
+      }
+
+      const condition = step > 0
+        ? (value: number) => value < stop
+        : (value: number) => value > stop;
+
+      for (let value = start; condition(value); value += step) {
+        context.shared.lastSpan = statement.span;
+        tick(context, statement.line, statement.column);
+        const loopEnv = new Environment(env);
+        loopEnv.declare(statement.itemName, 'integer', value, statement.line, statement.column);
+        const result = executeStatements(statement.body, loopEnv, context, topLevel);
+        if (result) return result;
+      }
+      continue;
+    }
   }
 
   return null;

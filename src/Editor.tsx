@@ -53,6 +53,7 @@ const completions = completeFromList([
   { label: 'if', type: 'keyword', apply: 'if condition is true, do.\n    \nend if.' },
   { label: 'while', type: 'keyword', apply: 'while condition is true, do.\n    \nend while.' },
   { label: 'for each', type: 'keyword', apply: 'for each item in items, do.\n    \nend for.' },
+  { label: 'for range', type: 'keyword', apply: 'for x in range(10), do.\n    \nend for.' },
   { label: 'function', type: 'keyword', apply: 'function name().\n    \nend function.' }
 ]);
 

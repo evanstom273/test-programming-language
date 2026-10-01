@@ -41,6 +41,7 @@ export type Statement = Located & (
   | { kind: 'while'; condition: Expression; body: Statement[] }
   | { kind: 'forEach'; itemName: string; iterable: Expression; body: Statement[] }
   | { kind: 'forRange'; typeName: TypeName; itemName: string; start: Expression; end: Expression; step: Expression | null; body: Statement[] }
+  | { kind: 'forPythonRange'; itemName: string; args: Expression[]; body: Statement[] }
   | { kind: 'function'; name: string; public?: boolean; parameters: Parameter[]; body: Statement[] }
   | { kind: 'return'; value: Expression | null }
   | { kind: 'expression'; expression: Expression }
