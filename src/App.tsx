@@ -53,7 +53,7 @@ export default function App() {
       const message = caught instanceof Error ? caught.message : 'Unable to read exported values.';
       return { fields: [] as ExportField[], error: message };
     }
-  }, [activeFile?.content]);
+  }, [activeFile?.id, activeFile?.content]);
 
   useEffect(() => {
     let cancelled = false;
