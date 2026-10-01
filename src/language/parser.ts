@@ -40,6 +40,15 @@ export function parseSource(source: string, fileId = 'main.lang'): Statement[] {
   return ast;
 }
 
+/** Completed top-level declarations remain useful while an editor buffer is incomplete. */
+export function parseSourcePrefix(source: string, fileId: string): Statement[] {
+  try {
+    return new Parser(tokenize(source, fileId)).parsePrefix();
+  } catch {
+    return [];
+  }
+}
+
 class Parser {
   private current = 0;
   private blockDepth = 0;
@@ -50,6 +59,18 @@ class Parser {
     const statements: Statement[] = [];
     while (!this.check(TokenType.EndOfFile)) statements.push(this.statement());
     return statements;
+  }
+
+  parsePrefix(): Statement[] {
+    const result: Statement[] = [];
+    while (!this.check(TokenType.EndOfFile)) {
+      try {
+        result.push(this.statement());
+      } catch {
+        break;
+      }
+    }
+    return result;
   }
 
   private span(start: Token) {
@@ -238,6 +259,16 @@ class Parser {
     if (this.matchKeyword('while')) return this.whileStatement();
     if (this.matchKeyword('for')) return this.forStatement();
     if (this.matchKeyword('return')) return this.returnStatement();
+    if (this.matchKeyword('break') || this.matchKeyword('continue')) {
+      const token = this.previous();
+      this.consume(TokenType.Period, 'Expected . after ' + token.value + '.');
+      return {
+        kind: token.value.toLowerCase() as 'break' | 'continue',
+        line: token.line,
+        column: token.column,
+        span: this.span(token),
+      };
+    }
     if (this.matchKeyword('button')) {
       this.requireTopLevel('button');
       return this.buttonStatement();

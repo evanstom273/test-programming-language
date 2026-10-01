@@ -441,3 +441,7 @@ Do not generate these as working syntax until implementation lands:
 ## Annotations, data, resources, and events
 
 [GDScript-inspired features](gdscript-inspiration.md) is part of this language contract. It specifies declaration hints, constants, typed collections, records, return types, dot disambiguation, resource identity, lifecycle/signal ordering, value semantics, and graphics primitives.
+
+## Comments, loop control and standard helpers
+
+See [General coding improvements](coding-improvements.md) for supported `#`/`/* */` comments, `break.`, `continue.`, typed return-path checks, and text/math built-ins.

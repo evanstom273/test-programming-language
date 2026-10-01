@@ -11,7 +11,27 @@ import type { Diagnostic } from './language/diagnostics';
 import { oneDark } from '@codemirror/theme-one-dark';
 
 const language = StreamLanguage.define({
-  token(stream) {
+  startState: () => ({ blockComment: false }),
+  token(stream, state) {
+    if (state.blockComment) {
+      if (stream.skipTo('*/')) {
+        stream.match('*/');
+        state.blockComment = false;
+      } else stream.skipToEnd();
+      return 'comment';
+    }
+    if (stream.match('#')) {
+      stream.skipToEnd();
+      return 'comment';
+    }
+    if (stream.match('/*')) {
+      state.blockComment = true;
+      if (stream.skipTo('*/')) {
+        stream.match('*/');
+        state.blockComment = false;
+      } else stream.skipToEnd();
+      return 'comment';
+    }
     if (stream.eatSpace()) return null;
     if (stream.match(/^@[A-Za-z_][A-Za-z0-9_]*/)) return 'meta';
     if (stream.match(/^"(?:\\.|[^"\n])*"/)) return 'string';

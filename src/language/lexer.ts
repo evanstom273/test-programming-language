@@ -71,6 +71,8 @@ export const KEYWORDS = new Set([
   'enum',
   'function',
   'return',
+  'break',
+  'continue',
   'if',
   'elif',
   'else',
@@ -166,6 +168,40 @@ export function tokenize(sourceCode: string, fileId = 'main.lang'): Token[] {
     if (/\s/.test(char)) {
       index += 1;
       column += 1;
+      continue;
+    }
+
+    if (char === '#') {
+      while (index < sourceCode.length && sourceCode[index] !== '\n') {
+        index++;
+        column++;
+      }
+      continue;
+    }
+    if (char === '/' && sourceCode[index + 1] === '*') {
+      const startLine = line,
+        startColumn = column,
+        start = index;
+      index += 2;
+      column += 2;
+      while (
+        index < sourceCode.length &&
+        !(sourceCode[index] === '*' && sourceCode[index + 1] === '/')
+      ) {
+        if (sourceCode[index++] === '\n') {
+          line++;
+          column = 1;
+        } else column++;
+      }
+      if (index >= sourceCode.length)
+        throw new LanguageError(
+          'Unterminated block comment. Add */.',
+          startLine,
+          startColumn,
+          pointSpan(fileId, startLine, startColumn, start),
+        );
+      index += 2;
+      column += 2;
       continue;
     }
 
