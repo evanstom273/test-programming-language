@@ -13,7 +13,7 @@ These documents describe the behavior on main at the time they were written. Lan
 - **ui.md** — the distinction between export, input, button, Inspector state, and runtime state.
 - **architecture.md** — how source becomes tokens, AST, runtime state, IDE controls, and output.
 - **conventions.md** — style and naming conventions for humans and coding agents.
-- **modules.md** — current module status plus the planned design constraints for multi-file projects.
+- **modules.md** — current multi-file project/import behavior and module conventions.
 
 ## Language identity
 
@@ -45,11 +45,12 @@ end if.
 
 A syntax shown as supported in the reference files should work on main and should have implementation/test coverage.
 
-A planned syntax must be labelled as planned. In particular, multi-file module syntax is under active development and must not be assumed to exist merely because it appears in a design example.
+Planned syntax must be labelled as planned. Multi-file projects, relative namespaced imports, public module functions, and Python-style range loops are implemented and documented as supported.
 
 When in doubt, check:
 
 1. src/language/lexer.ts
 2. src/language/parser.ts
-3. src/language/runtime.ts
-4. tests/runtime.test.ts and other language tests
+3. src/language/analysis.ts
+4. src/language/runtime.ts
+5. tests/runtime.test.ts and other language tests
