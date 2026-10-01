@@ -2,6 +2,19 @@
 
 A browser-based IDE and interpreter for an English-like, executable-pseudocode programming language.
 
+## Projects and worker runtime
+
+Language Lab now runs projects with configurable entry points, namespaced imports,
+static Inspector analysis and persistent worker-owned sessions. Use the existing
+Explorer to manage projects/folders and import or export source and project ZIPs.
+Run initializes a project; Stop terminates its worker. Editor-file selection does
+not change the entry point.
+
+See [Projects and runtime architecture](docs/projects-runtime.md) for module syntax,
+source spans, migration guarantees, resource limits, archive format and deliberate
+Phase 1–2 boundaries. A runnable multi-file example lives in
+[examples/modules](examples/modules).
+
 ## Syntax
 
 The language intentionally keeps symbolic syntax small while allowing familiar symbols where they improve readability.
@@ -70,7 +83,13 @@ end for.
 for integer: i from 1 to 10, do.
     print(i).
 end for.
+
+for i in range(10), do.
+    print(i).
+end for.
 ```
+
+Python-style `range` loops use an exclusive stop value, matching Python: `range(10)` produces 0 through 9, and `range(1, 10, 2)` produces 1, 3, 5, 7, 9. The existing typed `from ... to ...` form remains inclusive.
 
 ## Functions
 
@@ -84,7 +103,7 @@ print(add(10, 20)).
 
 ## Calculator example
 
-A `calculator.lang` example is created automatically:
+A `calculator.lang` example project is created in fresh workspaces:
 
 ```text
 enum Operation [add, subtract, multiply, divide].
@@ -178,7 +197,7 @@ are preserved.
 
 ### Session behavior
 
-- **Run** parses and initializes a fresh session. Declarations evaluate in source
+- **Run** statically compiles the project and initializes a fresh worker session. Declarations evaluate in source
   order: their code defaults are evaluated, then the matching Inspector or input
   override is applied. Later declarations see earlier effective values.
 - Inputs and buttons are **top-level** constructs. A button label is a nonempty
@@ -204,8 +223,9 @@ are preserved.
 
 ### Architecture and tests
 
-`src/language/ast.ts` and `parser.ts` define the language; `ProgramSession` in
-`runtime.ts` owns globals, functions, input validation, action execution and output.
+`src/language/ast.ts` and `parser.ts` define the language; `analysis.ts` creates an
+immutable Program. `RuntimeSession` in `runtime.ts` owns mutable module state,
+input validation, action execution and output inside a Web Worker.
 `program.ts` exposes serializable UI metadata. React's `useProgramSession` hook
 handles session lifetime/staleness; `ProgramOutput` and `ValueControl` render
 metadata and dispatch actions, without interpreting source.

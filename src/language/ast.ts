@@ -1,9 +1,11 @@
+import type { SourceSpan } from './diagnostics';
+
 export type Value = number | string | boolean | Value[] | null;
 export type ExportValue = number | string | boolean | Value[];
 export type ExportOverrides = Record<string, ExportValue>;
 
 export type TypeName = string;
-export type Located = { line: number; column: number };
+export type Located = { line: number; column: number; span: SourceSpan };
 
 export type Expression = Located & (
   | { kind: 'literal'; value: Value }
@@ -16,6 +18,7 @@ export type Expression = Located & (
 );
 
 export interface Parameter {
+  span: SourceSpan;
   typeName: TypeName;
   name: string;
   line: number;
@@ -28,6 +31,7 @@ interface IfBranch {
 }
 
 export type Statement = Located & (
+  | { kind: 'import'; path: string; alias: string }
   | { kind: 'enum'; name: string; values: string[] }
   | { kind: 'declare'; typeName: TypeName; name: string; value: Expression; exposure: 'export' | 'input' | null }
   | { kind: 'button'; label: string; body: Statement[] }
@@ -37,7 +41,8 @@ export type Statement = Located & (
   | { kind: 'while'; condition: Expression; body: Statement[] }
   | { kind: 'forEach'; itemName: string; iterable: Expression; body: Statement[] }
   | { kind: 'forRange'; typeName: TypeName; itemName: string; start: Expression; end: Expression; step: Expression | null; body: Statement[] }
-  | { kind: 'function'; name: string; parameters: Parameter[]; body: Statement[] }
+  | { kind: 'forPythonRange'; itemName: string; args: Expression[]; body: Statement[] }
+  | { kind: 'function'; name: string; public?: boolean; parameters: Parameter[]; body: Statement[] }
   | { kind: 'return'; value: Expression | null }
   | { kind: 'expression'; expression: Expression }
 );

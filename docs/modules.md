@@ -1,16 +1,10 @@
 # Modules and multi-file projects
 
-## Current status
+## Status
 
-On the main branch at the time this document was written, .lang files execute independently and there is no supported import/module syntax yet.
+Multi-file projects and namespaced imports are implemented.
 
-Modules are part of the active project/runtime roadmap. This file records the intended constraints so documentation and implementation do not accidentally overload existing language concepts.
-
-Do not assume the example syntax below works until the module implementation lands.
-
-## Core design rule
-
-A project, not an arbitrary collection of files, should become the unit of execution.
+A project, rather than whichever editor tab is selected, is the unit of analysis and execution.
 
 Illustrative project:
 
@@ -24,17 +18,19 @@ calculator/
         icon.png
 ~~~
 
-main.lang is the entry point unless project metadata explicitly chooses another entry file.
+The project has a configured entry file, normally main.lang.
 
-## Planned import direction
+## Import syntax
 
-The current design direction is explicit relative, namespaced imports:
+main.lang:
 
 ~~~text
 import "./lib/maths.lang" as maths.
+
+print(maths.double(10)).
 ~~~
 
-and explicit module visibility:
+lib/maths.lang:
 
 ~~~text
 public function double(integer: value).
@@ -42,69 +38,71 @@ public function double(integer: value).
 end function.
 ~~~
 
-then:
+Imports are:
 
-~~~text
-print(maths.double(number)).
-~~~
+- explicit;
+- relative;
+- required to use .lang paths;
+- namespaced.
 
-This syntax is a design target, not current-main syntax.
+## Visibility
 
-## Keep three meanings separate
-
-This distinction is non-negotiable unless the language design is explicitly revised:
+Keep these meanings separate:
 
 ~~~text
 export -> Inspector exposure
 input  -> application/user control
-public -> module visibility
+public -> module function visibility
 ~~~
 
-Do not repurpose export to mean "export this symbol from the module". Export already has established runtime/IDE semantics.
+export is not a module-export keyword.
 
-## Initial module constraints
+Currently public exposes functions. Imported non-public functions cannot be called from another module.
 
-The first module system should stay deliberately small:
+## Module state
 
-- explicit relative paths;
-- explicit file extensions;
-- namespaced imports;
-- module-local globals;
-- each reachable module initializes once per RuntimeSession;
-- deterministic initialization order;
-- useful diagnostics for missing imports;
-- reject import cycles initially;
-- no remote imports;
-- no wildcard imports;
-- no package registry;
-- no implicit globals.
+Every reachable module receives its own global runtime environment.
 
-Unreferenced files must not execute merely because they happen to exist in the same project.
+A module initializes once per RuntimeSession.
+
+Public functions execute in their defining module's context, so they can read and mutate that module's persistent globals.
+
+## Import resolution
+
+Imports resolve through the project virtual filesystem.
+
+The resolver:
+
+- requires relative paths;
+- rejects paths that escape the project;
+- requires explicit .lang extensions;
+- rejects unsafe paths;
+- reports missing modules;
+- rejects circular imports.
+
+Remote URLs, wildcard imports, and a package registry are not supported.
+
+## Reachability
+
+Only modules reachable from the configured entry point belong to the running Program.
+
+An unrelated .lang file does not execute merely because it exists in the project.
 
 ## Source identity
 
-Multi-file diagnostics need more than line and column.
+Parsed nodes carry file-aware source spans.
 
-Every parsed location should eventually identify:
+That supports:
 
-- project/document identity;
-- file path or source ID;
-- start line/column;
-- end line/column or absolute span.
-
-This enables:
-
-- cross-file errors;
-- go to definition;
-- stack traces;
-- safe refactors;
-- future VS Code/LSP support.
+- cross-file diagnostics;
+- references/symbols;
+- stack/error locations;
+- future go-to-definition/refactors;
+- future VS Code/LSP integration.
 
 ## Project snapshots
 
-Run/build should operate on an immutable snapshot of the project.
-
-Conceptually:
+Analysis and Run operate on an immutable project snapshot.
 
 ~~~text
 workspace editing state
@@ -113,66 +111,39 @@ workspace editing state
 ProjectSnapshot
       |
       v
-resolve imports
+module resolution + static analysis
       |
       v
-validated Program/module graph
+immutable Program
       |
       v
 RuntimeSession
 ~~~
 
-A running session should not discover half-saved source from another editor tab midway through an event.
+This prevents execution from observing half-updated workspace state.
 
 ## Stable identities
 
-Files/projects need stable IDs independent of path.
+Files/projects have stable IDs independent of their paths.
 
-Renaming:
+Rename/move operations should preserve identity and persisted settings where appropriate.
 
-~~~text
-lib/maths.lang
-~~~
+## Member-dot grammar
 
-to:
-
-~~~text
-lib/math.lang
-~~~
-
-must not accidentally destroy unrelated persisted settings merely because a pathname changed.
-
-## Dot grammar issue
-
-The module design wants member-like access:
+Namespace-qualified calls use member-like syntax:
 
 ~~~text
 maths.double(number)
 ~~~
 
-but a period already terminates statements and numeric literals may contain a decimal point.
+The parser distinguishes member dots from statement-ending periods using adjacency rules. Numeric literals also use a decimal point.
 
-The grammar must explicitly distinguish:
+Do not casually change dot tokenization: statement terminators, member access, and future numeric-type work all depend on well-tested grammar.
 
-- statement-ending period;
-- future member-access period;
-- decimal point.
+## Portability
 
-Do not bolt member access into the tokenizer/parser without resolving that interaction and adding conformance tests.
+IndexedDB stores the editable workspace.
 
-## Project portability
+Portable project archives use normal project files plus metadata, and import/export validates paths and size limits transactionally.
 
-IndexedDB is the IDE's working store, not the portable project format.
-
-A future project archive should contain ordinary source/assets plus versioned metadata such as:
-
-~~~text
-langlab.json
-main.lang
-lib/
-assets/
-~~~
-
-A normal project export should not silently include private editor preferences or personal input overrides.
-
-Workspace backup is a separate concept and may include IDE-specific state when the user explicitly chooses it.
+Ordinary project exports should not silently include unrelated private editor preferences or transient runtime state.

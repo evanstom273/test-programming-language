@@ -27,5 +27,7 @@ jobs:
           GITHUB_PAGES: 'true'
       - name: Install Chromium for PWA checks
         run: npx playwright install --with-deps chromium
+      - name: Test desktop and mobile browser flows
+        run: npm run test:e2e
       - name: Check production PWA and offline restart
         run: npm run test:pwa

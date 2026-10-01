@@ -1,10 +1,8 @@
 # Syntax reference
 
-This is the quick practical reference for writing valid .lang programs.
+A compact reference for writing current .lang source.
 
-## Statements end with periods
-
-Correct:
+## Statements use periods
 
 ~~~text
 integer: score = 0.
@@ -12,16 +10,9 @@ score = score + 1.
 print(score).
 ~~~
 
-Incorrect:
+Do not use semicolons.
 
-~~~text
-integer: score = 0;
-score = score + 1;
-~~~
-
-Language Lab does not use semicolons.
-
-## Typed declarations
+## Declarations
 
 ~~~text
 integer: health = 100.
@@ -38,10 +29,7 @@ The colon is mandatory.
 health = 75.
 playerName = "Mira".
 gameOver = true.
-inventory = ["key"].
 ~~~
-
-Assignment only changes an existing variable.
 
 ## Enums
 
@@ -52,7 +40,7 @@ Direction: direction = north.
 direction = east.
 ~~~
 
-## Printing
+## Print
 
 ~~~text
 print("Hello").
@@ -62,28 +50,23 @@ print(playerName, "has", health, "HP").
 
 ## Arithmetic
 
-Word and symbol forms may be mixed.
-
 ~~~text
-integer: a = 10.
-integer: b = 5.
+a plus b
+a + b
 
-print(a plus b).
-print(a + b).
+a minus b
+a - b
 
-print(a minus b).
-print(a - b).
+a times b
+a * b
 
-print(a times b).
-print(a * b).
+a divided by b
+a / b
 
-print(a divided by b).
-print(a / b).
-
-print(a remainder b).
+a remainder b
 ~~~
 
-Unary minus is supported:
+Unary minus:
 
 ~~~text
 integer: change = -5.
@@ -92,53 +75,22 @@ integer: change = -5.
 ## Comparisons
 
 ~~~text
-if score is 10, do.
-    print("Exactly ten.").
-end if.
-
-if score is not 10, do.
-    print("Not ten.").
-end if.
-
-if score is equal to 10, do.
-    print("Exactly ten.").
-end if.
-
-if score is not equal to 10, do.
-    print("Not ten.").
-end if.
-
-if score is less than 10, do.
-    print("Below ten.").
-end if.
-
-if score is less than or equal to 10, do.
-    print("Ten or below.").
-end if.
-
-if score is greater than 10, do.
-    print("Above ten.").
-end if.
-
-if score is greater than or equal to 10, do.
-    print("Ten or above.").
-end if.
+score is 10
+score is equal to 10
+score is not 10
+score is not equal to 10
+score is less than 10
+score is less than or equal to 10
+score is greater than 10
+score is greater than or equal to 10
 ~~~
 
 ## Boolean logic
 
 ~~~text
-if alive and hasWeapon, do.
-    print("Fight.").
-end if.
-
-if hasKey or doorOpen, do.
-    print("Enter.").
-end if.
-
-if not gameOver, do.
-    print("Keep playing.").
-end if.
+alive and hasWeapon
+hasKey or doorOpen
+not gameOver
 ~~~
 
 ## If / elif / else
@@ -150,18 +102,6 @@ elif health is greater than 0, do.
     print("Hurt.").
 else, do.
     print("Dead.").
-end if.
-~~~
-
-Remember the block-header pattern:
-
-~~~text
-condition, do.
-~~~
-
-and the block terminator:
-
-~~~text
 end if.
 ~~~
 
@@ -183,7 +123,30 @@ for each name in names, do.
 end for.
 ~~~
 
-## Range for
+## Python-style range
+
+Recommended compact counting form:
+
+~~~text
+for x in range(10), do.
+    print(x).
+end for.
+~~~
+
+Python semantics:
+
+~~~text
+range(5)          -> 0, 1, 2, 3, 4
+range(2, 5)       -> 2, 3, 4
+range(1, 10, 2)   -> 1, 3, 5, 7, 9
+range(10, 0, -2)  -> 10, 8, 6, 4, 2
+~~~
+
+The stop value is exclusive and the loop variable is inferred as integer.
+
+## Typed range
+
+The explicit Language Lab form is still supported and remains inclusive:
 
 ~~~text
 for integer: i from 1 to 5, do.
@@ -191,9 +154,7 @@ for integer: i from 1 to 5, do.
 end for.
 ~~~
 
-The range is inclusive.
-
-With a step:
+With step:
 
 ~~~text
 for integer: i from 10 to 0 step -2, do.
@@ -210,8 +171,6 @@ print(items[0]).
 print(items[2][1]).
 ~~~
 
-Indexes start at zero.
-
 ## Functions
 
 ~~~text
@@ -223,35 +182,43 @@ integer: result = multiply(4, 5).
 print(result).
 ~~~
 
-A function with no parameters:
-
-~~~text
-function greeting().
-    print("Hello!").
-end function.
-
-greeting().
-~~~
-
-## Built-in random integer
+## Random integers
 
 ~~~text
 integer: damage = randomInteger(8, 15).
 print("Damage:", damage).
 ~~~
 
-The minimum and maximum are both inclusive.
+Both bounds are inclusive.
 
-## Inspector values with export
+## Modules
+
+main.lang:
+
+~~~text
+import "./lib/maths.lang" as maths.
+
+print(maths.double(10)).
+~~~
+
+lib/maths.lang:
+
+~~~text
+public function double(integer: value).
+    return value * 2.
+end function.
+~~~
+
+Imported functions must be public.
+
+## Inspector configuration
 
 ~~~text
 export integer: startingHealth = 100.
 export text: title = "Goblin Arena".
 ~~~
 
-These appear in the IDE Inspector.
-
-## Application inputs with input
+## Application inputs
 
 ~~~text
 input text: heroName = "Lyra".
@@ -262,9 +229,7 @@ enum Difficulty [easy, normal, hard].
 input Difficulty: difficulty = normal.
 ~~~
 
-These appear as controls for the running program.
-
-## Application buttons
+## Buttons
 
 ~~~text
 integer: count = 0.
@@ -280,61 +245,38 @@ button "Reset", do.
 end button.
 ~~~
 
-The global count persists between button presses until the program is run again.
+Global state persists between button presses until Run starts a fresh session.
 
-## Full small example
+## Small random game fragment
 
 ~~~text
-enum Difficulty [easy, normal, hard].
+integer: total = 0.
 
-export text: title = "Tiny Battle".
-input text: heroName = "Lyra".
-input Difficulty: difficulty = normal.
+for roll in range(5), do.
+    integer: result = randomInteger(1, 6).
+    total = total + result.
+    print("Roll", roll + 1, ":", result).
+end for.
 
-integer: heroHealth = 100.
-integer: enemyHealth = 40.
-
-function enemyDamage().
-    if difficulty is easy, do.
-        return randomInteger(3, 6).
-    elif difficulty is hard, do.
-        return randomInteger(8, 14).
-    else, do.
-        return randomInteger(5, 10).
-    end if.
-end function.
-
-button "Attack", do.
-    if enemyHealth is greater than 0, do.
-        integer: damage = randomInteger(8, 15).
-        enemyHealth = enemyHealth - damage.
-        print(heroName, "deals", damage, "damage.").
-
-        if enemyHealth is greater than 0, do.
-            integer: retaliation = enemyDamage().
-            heroHealth = heroHealth - retaliation.
-            print("Enemy deals", retaliation, "damage.").
-        else, do.
-            enemyHealth = 0.
-            print(heroName, "wins!").
-        end if.
-
-        print("Hero HP:", heroHealth).
-        print("Enemy HP:", enemyHealth).
-    end if.
-end button.
+print("Total:", total).
 ~~~
 
-## Syntax not yet supported
+## Common invalid syntax
 
-Do not write these yet:
+Do not write:
 
 ~~~text
 integer health = 100
 integer: health = 100;
 player_name = "Lyra".
 if health < 10, do.
-import "./other.lang".
+for x in range(10):
 ~~~
 
-The first is missing the mandatory colon, the second uses a semicolon, identifiers do not yet contain underscores, symbolic comparisons are not implemented, and imports are still under active development on the roadmap.
+Reasons:
+
+- typed declarations need a colon;
+- statements end in periods, not semicolons;
+- underscores are not current identifier syntax;
+- comparisons use supported English forms;
+- Python-style range keeps Language Lab's , do. and end for. block syntax.

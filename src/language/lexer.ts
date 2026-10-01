@@ -1,3 +1,4 @@
+import { pointSpan, type SourceSpan } from './diagnostics';
 export enum TokenType {
   Number = 'Number',
   String = 'String',
@@ -19,6 +20,7 @@ export enum TokenType {
 }
 
 export interface Token {
+  span: SourceSpan;
   type: TokenType;
   value: string;
   line: number;
@@ -26,16 +28,16 @@ export interface Token {
 }
 
 export class LanguageError extends Error {
-  constructor(message: string, public line: number, public column: number) {
+  constructor(message: string, public line: number, public column: number, public span: SourceSpan = pointSpan('main.lang', line, column)) {
     super(message);
     this.name = 'LanguageError';
   }
 }
 
 export const KEYWORDS = new Set([
-  'integer', 'text', 'array', 'boolean', 'print', 'export', 'input', 'button', 'enum',
+  'import', 'as', 'public', 'integer', 'text', 'array', 'boolean', 'print', 'export', 'input', 'button', 'enum',
   'function', 'return', 'if', 'elif', 'else', 'end', 'do',
-  'while', 'for', 'each', 'in', 'from', 'to', 'step',
+  'while', 'for', 'each', 'in', 'from', 'to', 'step', 'range',
   'plus', 'minus', 'times', 'divided', 'by', 'remainder',
   'is', 'equal', 'not', 'less', 'than', 'greater', 'or', 'and',
   'true', 'false'
@@ -56,17 +58,19 @@ const punctuation: Record<string, TokenType> = {
   '/': TokenType.Slash
 };
 
-export function tokenize(sourceCode: string): Token[] {
+export function tokenize(sourceCode: string, fileId = 'main.lang'): Token[] {
   const tokens: Token[] = [];
   let index = 0;
   let line = 1;
   let column = 1;
 
+  let tokenStart = 0;
   const push = (type: TokenType, value: string, tokenLine = line, tokenColumn = column) => {
-    tokens.push({ type, value, line: tokenLine, column: tokenColumn });
+    tokens.push({ type, value, line: tokenLine, column: tokenColumn, span: { fileId, start: { offset: tokenStart, line: tokenLine, column: tokenColumn }, end: { offset: Math.max(index, tokenStart + 1), line, column: Math.max(column, tokenColumn + 1) } } });
   };
 
   while (index < sourceCode.length) {
+    tokenStart = index;
     const char = sourceCode[index];
 
     if (char === '\n') {
@@ -91,7 +95,7 @@ export function tokenize(sourceCode: string): Token[] {
 
       while (index < sourceCode.length && sourceCode[index] !== '"') {
         if (sourceCode[index] === '\n') {
-          throw new LanguageError('Strings cannot span multiple lines yet.', line, column);
+          throw new LanguageError('Strings cannot span multiple lines yet.', line, column, pointSpan(fileId, line, column, index));
         }
         if (sourceCode[index] === '\\' && index + 1 < sourceCode.length) {
           const escaped = sourceCode[index + 1];
@@ -107,7 +111,7 @@ export function tokenize(sourceCode: string): Token[] {
       }
 
       if (index >= sourceCode.length) {
-        throw new LanguageError('Unterminated string. Add a closing quote.', startLine, startColumn);
+        throw new LanguageError('Unterminated string. Add a closing quote.', startLine, startColumn, pointSpan(fileId, startLine, startColumn, tokenStart));
       }
 
       index += 1;
@@ -166,10 +170,10 @@ export function tokenize(sourceCode: string): Token[] {
     throw new LanguageError(
       'Unexpected symbol "' + char + '". Allowed symbols are . , : ( ) [ ] " = + - * /.',
       line,
-      column
+      column, pointSpan(fileId, line, column, index)
     );
   }
 
-  tokens.push({ type: TokenType.EndOfFile, value: '', line, column });
+  tokens.push({ type: TokenType.EndOfFile, value: '', line, column, span: pointSpan(fileId, line, column, index) });
   return tokens;
 }

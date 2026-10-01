@@ -3,6 +3,8 @@ import { expect, test, type Page } from '@playwright/test';
 async function openFile(page: Page, name: string) {
   const open = page.getByRole('button', { name: 'Open files', exact: true });
   if (await open.isVisible()) await open.click();
+  const projects = page.getByRole('combobox', { name: 'Project', exact: true }).filter({ visible: true });
+  await projects.selectOption({ label: name });
   await page.getByRole('button', { name, exact: true }).filter({ visible: true }).click();
   await expect(page.locator('.cm-content')).not.toBeEmpty();
 }

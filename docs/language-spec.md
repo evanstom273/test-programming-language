@@ -2,23 +2,15 @@
 
 ## Status
 
-This is a living specification for the currently implemented language. It describes supported source behavior rather than future roadmap ideas.
+This is the living reference for syntax and behavior implemented by Language Lab. It describes supported source behavior, not speculative roadmap syntax.
 
-Language Lab is an English-like, typed, executable-pseudocode language. The current implementation is parsed and executed by a TypeScript interpreter.
+Language Lab is an English-like, typed, executable-pseudocode language. The current reference implementation is a TypeScript parser, static analyzer, and AST interpreter.
 
-## 1. Source files
+## Source files
 
-The conventional source extension is:
+Language source uses the .lang extension.
 
-~~~text
-.lang
-~~~
-
-A source file is a sequence of statements and declarations.
-
-Whitespace between tokens is generally insignificant. Newlines improve readability but are not statement terminators.
-
-A period terminates ordinary statements and declarations.
+A source file is a sequence of declarations and statements. Whitespace and newlines improve readability but do not terminate statements. Ordinary statements and declarations end with a period.
 
 ~~~text
 integer: score = 10.
@@ -27,25 +19,11 @@ print(score).
 
 Semicolons are not part of the language.
 
-## 2. Character and token rules
+## Identifiers
 
-Currently meaningful punctuation is:
+Identifiers begin with an ASCII letter and may continue with ASCII letters or digits.
 
-~~~text
-. , : ( ) [ ] " = + - * /
-~~~
-
-Other punctuation is rejected unless or until explicitly added to the lexer.
-
-### 2.1 Identifiers
-
-Identifiers:
-
-- begin with an ASCII letter;
-- may continue with ASCII letters or digits;
-- do not currently contain underscores.
-
-Valid examples:
+Preferred:
 
 ~~~text
 health
@@ -54,40 +32,23 @@ numberOne
 enemy2
 ~~~
 
-Invalid examples:
+Underscores are not currently legal identifier characters.
 
-~~~text
-_player
-player_name
-2player
-~~~
+Keywords are recognized case-insensitively. Identifiers preserve their spelling and should use consistent casing.
 
-Keywords are recognized case-insensitively. Identifiers preserve their spelling and runtime lookup is case-sensitive, so code should use consistent casing.
+## Strings
 
-### 2.2 Strings
+Strings use double quotes and currently stay on one source line.
 
-Strings use double quotes and must currently remain on one source line.
-
-Supported escapes include:
-
-~~~text
-\n
-\t
-\"
-\\
-~~~
-
-Example:
+Supported escapes include newline, tab, quote, and backslash:
 
 ~~~text
 text: message = "Hello\nworld".
 ~~~
 
-### 2.3 Numbers
+## Numbers
 
 Numeric literals may contain digits and one decimal point when digits follow the point.
-
-Examples:
 
 ~~~text
 10
@@ -95,28 +56,25 @@ Examples:
 2.5
 ~~~
 
-The only public declared numeric primitive currently specified is integer. See types.md for the important distinction between numeric runtime values and declared integer variables.
+The stable declared numeric primitive is currently integer. Arithmetic may produce non-integer runtime numbers, but there is not yet a public float/decimal declaration type.
 
-## 3. Reserved words
-
-Current keywords include:
+## Current keywords
 
 ~~~text
+import as public
 integer text array boolean
 print export input button enum
 function return
 if elif else end do
-while for each in from to step
+while for each in from to step range
 plus minus times divided by remainder
 is equal not less than greater or and
 true false
 ~~~
 
-Do not use keywords as variable, function, enum, or parameter names.
+## Typed declarations
 
-## 4. Declarations
-
-Typed declarations always use a colon between the type and variable name.
+Typed declarations always use a colon:
 
 ~~~text
 integer: health = 100.
@@ -125,57 +83,32 @@ boolean: alive = true.
 array: inventory = ["sword", "potion"].
 ~~~
 
-The declaration initializer is evaluated immediately when execution reaches the declaration.
-
-Variables may be reassigned:
+Assignment changes an existing variable while preserving its declared type:
 
 ~~~text
 health = health - 10.
 ~~~
 
-Assignment does not redeclare a variable and must preserve its declared type.
-
-## 5. Enums
-
-Enums define a named type with a fixed set of identifier values.
+## Enums
 
 ~~~text
 enum Difficulty [easy, normal, hard].
 
 Difficulty: difficulty = normal.
-~~~
-
-An enum requires at least one value. Duplicate values inside the same enum are rejected.
-
-Enum values are currently referenced as bare identifiers:
-
-~~~text
 difficulty = hard.
 ~~~
 
-Qualified enum values are not implemented yet. Until namespacing exists, avoid reusing the same value names across unrelated enums where ambiguity would be confusing.
+An enum requires at least one value. Duplicate values inside one enum are rejected.
 
-## 6. Expressions
+Enum values are currently bare identifiers.
 
-Expressions include:
+## Expressions and precedence
 
-- literals;
-- variable references;
-- enum values;
-- arrays;
-- array indexing;
-- function calls;
-- unary not;
-- unary minus;
-- arithmetic;
-- comparisons;
-- boolean and/or.
+Expressions include literals, identifiers, enum values, arrays, indexing, function calls, unary operators, arithmetic, comparisons, and boolean logic.
 
-### 6.1 Precedence
+Practical precedence, highest to lowest:
 
-From highest to lowest, the practical precedence is:
-
-1. primary expressions, calls, and indexing;
+1. literals, identifiers, calls, member-qualified calls, and indexing;
 2. unary not and unary minus;
 3. multiplication, division, remainder;
 4. addition and subtraction;
@@ -183,15 +116,11 @@ From highest to lowest, the practical precedence is:
 6. and;
 7. or.
 
-Parentheses may be used to make grouping explicit.
+Parentheses may make grouping explicit.
 
-~~~text
-integer: result = (first + second) * multiplier.
-~~~
+## Arithmetic
 
-### 6.2 Arithmetic
-
-English and symbolic forms are equivalent:
+Word and symbolic forms are equivalent:
 
 ~~~text
 a plus b
@@ -213,17 +142,13 @@ Remainder currently uses the word form:
 value remainder 2
 ~~~
 
-If either operand of plus is text, plus performs text concatenation using the language's formatted representation.
+If either operand of plus is text, plus concatenates their formatted values.
 
-~~~text
-print("HP: " plus health).
-~~~
+Division by zero is an error.
 
-Division by zero is a runtime error.
+## Comparisons
 
-### 6.3 Comparisons
-
-Supported comparison forms are:
+Supported forms:
 
 ~~~text
 a is b
@@ -239,41 +164,32 @@ a is greater than b
 a is greater than or equal to b
 ~~~
 
-There are no symbolic comparison operators such as <, >, ==, or != in the current language.
+Symbolic comparisons such as ==, !=, <, <=, >, >= are not current syntax.
 
-### 6.4 Boolean operators
+## Boolean logic
 
 ~~~text
 alive and hasWeapon
-alive or hasPotion
+hasKey or doorOpen
 not gameOver
 ~~~
 
-Conditions require actual boolean values. Language Lab does not currently use JavaScript-style truthiness.
+Conditions require boolean values. There is no JavaScript-style truthiness.
 
-## 7. Arrays
-
-Array literals use square brackets.
+## Arrays
 
 ~~~text
-array: items = ["sword", "potion", 3].
-~~~
-
-Arrays may currently contain mixed and nested language values.
-
-Indexing is zero-based:
-
-~~~text
+array: items = ["sword", "potion", [1, 2]].
 print(items[0]).
 ~~~
 
-Indexes must be integers and must be in range.
+Indexes are zero-based, must be integers, and must be in range.
 
-Element assignment such as items[0] = value is not currently part of the grammar. Replace the array variable as a whole when mutation is required.
+Arrays may currently contain mixed language values.
 
-## 8. Output
+Indexed assignment such as items[0] = value is not current syntax.
 
-Use print with zero or more expressions.
+## Output
 
 ~~~text
 print("Hello").
@@ -281,11 +197,9 @@ print("Health:", health).
 print(name, score, inventory).
 ~~~
 
-Multiple print arguments are formatted and joined with a single space.
+Multiple arguments are formatted and joined with a single space. Each print call appends one output entry.
 
-Each print call appends one entry to program output.
-
-## 9. Conditional control flow
+## If / elif / else
 
 ~~~text
 if health is less than or equal to 0, do.
@@ -297,9 +211,9 @@ else, do.
 end if.
 ~~~
 
-The comma and do are required. The header ends with a period. The complete block closes with end if.
+Block headers use comma + do + period.
 
-## 10. While loops
+## While
 
 ~~~text
 while health is greater than 0, do.
@@ -307,11 +221,9 @@ while health is greater than 0, do.
 end while.
 ~~~
 
-The condition is re-evaluated each iteration and must produce a boolean.
+The condition is reevaluated each iteration and must be boolean.
 
-Runtime operation limits prevent unbounded execution from running forever.
-
-## 11. For-each loops
+## For each
 
 ~~~text
 for each item in inventory, do.
@@ -319,11 +231,48 @@ for each item in inventory, do.
 end for.
 ~~~
 
-The iterable must evaluate to an array.
+The iterable must be an array.
 
-The loop variable is local to each iteration.
+## Python-style range loops
 
-## 12. Range loops
+Language Lab supports compact Python-style counting loops while keeping Language Lab block syntax:
+
+~~~text
+for x in range(10), do.
+    print(x).
+end for.
+~~~
+
+range follows Python stop semantics:
+
+~~~text
+range(10)          -> 0 through 9
+range(2, 5)        -> 2, 3, 4
+range(1, 10, 2)    -> 1, 3, 5, 7, 9
+range(10, 0, -2)   -> 10, 8, 6, 4, 2
+~~~
+
+Forms:
+
+~~~text
+range(stop)
+range(start, stop)
+range(start, stop, step)
+~~~
+
+Rules:
+
+- arguments must be integers;
+- stop is exclusive;
+- step defaults to 1;
+- step cannot be zero;
+- the loop variable is inferred as integer.
+
+range is currently loop syntax, not a general-purpose function value.
+
+## Typed range loops
+
+The original explicit typed range form remains supported:
 
 ~~~text
 for integer: i from 1 to 10, do.
@@ -331,9 +280,9 @@ for integer: i from 1 to 10, do.
 end for.
 ~~~
 
-The end value is inclusive.
+Unlike range(...), the from/to form has an inclusive end value.
 
-An explicit step may be supplied:
+It may use a step:
 
 ~~~text
 for integer: i from 10 to 0 step -2, do.
@@ -341,13 +290,7 @@ for integer: i from 10 to 0 step -2, do.
 end for.
 ~~~
 
-Start, end, and step must be numeric. Step must not be zero. The declared loop-variable type is validated on each iteration.
-
-For ordinary current code, use integer as the range variable type.
-
-## 13. Functions
-
-Functions have named, typed parameters.
+## Functions
 
 ~~~text
 function add(integer: first, integer: second).
@@ -355,57 +298,93 @@ function add(integer: first, integer: second).
 end function.
 ~~~
 
-Functions are called by name:
+Call by name:
 
 ~~~text
 print(add(10, 20)).
 ~~~
 
-Parameter declarations require the same mandatory colon convention as ordinary declarations.
+Parameters use mandatory typed colons.
 
-Return may include a value:
+Return may contain a value or be empty:
 
 ~~~text
 return total.
-~~~
-
-or return no value:
-
-~~~text
 return.
 ~~~
 
-Return outside a function is a runtime error.
+Return outside a function is an error.
 
-The language does not currently declare return types in function signatures.
+Function return types are not yet declared in signatures.
 
-See functions.md for scope and built-ins.
+## Built-in random integer
 
-## 14. Interactive declarations
+~~~text
+integer: damage = randomInteger(8, 15).
+~~~
 
-Language Lab has three different concepts that must not be conflated.
+Both bounds are inclusive. Arguments must be integers and minimum must not exceed maximum.
 
-### 14.1 export
+The current implementation uses host randomness and is not seeded or cryptographically secure.
+
+## Modules
+
+Projects may contain multiple .lang modules.
+
+Import explicitly with a relative .lang path and namespace:
+
+~~~text
+import "./lib/maths.lang" as maths.
+~~~
+
+A module exposes callable functions with public:
+
+~~~text
+public function double(integer: value).
+    return value * 2.
+end function.
+~~~
+
+Call through the namespace:
+
+~~~text
+print(maths.double(10)).
+~~~
+
+Module rules currently include:
+
+- explicit relative .lang imports;
+- namespaced access;
+- module-local globals;
+- each reachable module initializes once per RuntimeSession;
+- deterministic project resolution;
+- import cycles rejected;
+- imported functions must be public;
+- no remote imports, wildcard imports, or package registry.
+
+export does not mean module visibility. export remains Inspector exposure.
+
+## export, input, and button
+
+These three concepts are intentionally distinct.
+
+### export
 
 ~~~text
 export integer: startingHealth = 100.
 ~~~
 
-Export means the value is exposed as configuration to the IDE Inspector.
+Exposes configuration metadata to the IDE Inspector.
 
-It does not currently mean module visibility.
-
-### 14.2 input
+### input
 
 ~~~text
 input text: heroName = "Lyra".
 ~~~
 
-Input means the running program exposes a user-editable control in its application/output surface.
+Exposes a user-editable control in the running App/Output surface.
 
-Input declarations are top-level constructs.
-
-### 14.3 button
+### button
 
 ~~~text
 button "Attack", do.
@@ -413,68 +392,49 @@ button "Attack", do.
 end button.
 ~~~
 
-Buttons expose an event/action in the running application surface.
+Exposes an interactive action. Buttons execute against the current persistent RuntimeSession state.
 
-Button labels must be non-empty quoted strings. Buttons are top-level constructs and retain access to the current program session state between presses.
+input and button are top-level constructs.
 
-See ui.md for the full state model.
+## Scope
 
-## 15. Scope
+Runtime variables live in nested environments.
 
-A source-level declaration creates a binding in the current runtime environment.
+- declarations bind in the current environment;
+- reads search outward;
+- assignment updates the nearest existing binding;
+- nested control-flow gets child scope;
+- every button press gets fresh action-local scope over persistent module globals;
+- each function call gets fresh function-local scope over its module globals.
 
-Nested control-flow bodies use child scopes.
+Imported modules keep their own global state.
 
-Assignments search outward through enclosing scopes, so a block may mutate an existing outer variable.
+## Errors and diagnostics
 
-A declaration made inside a button or block is local to that execution scope.
+Language diagnostics carry source identity and source spans, enabling file-aware errors and future editor tooling.
 
-Each button press starts with a fresh action-local scope whose parent is the persistent global environment.
+Errors include invalid syntax, unknown bindings, type mismatches, invalid module imports, array bounds failures, division by zero, resource-limit failures, and invalid range arguments.
 
-Functions use a fresh function environment whose parent is the program global environment. Function parameters and function-local declarations are local to that call. Functions may read and assign globals.
+Messages should describe the expected source form rather than exposing parser internals.
 
-For current portable source, define functions and enums at top level.
+## Runtime limits
 
-## 16. Errors
+Execution is bounded by operation, time, call-depth, output, and value-size limits.
 
-Language errors include source line and column information.
+The IDE runs program execution in a Web Worker. Stop/timeout can hard-terminate the worker when synchronous user code cannot cooperatively yield.
 
-Examples include:
+## Not currently part of the language
 
-- unexpected symbols;
-- missing periods;
-- missing block terminators;
-- invalid types;
-- unknown variables or functions;
-- invalid enum values;
-- out-of-range array indexes;
-- division by zero;
-- excessive execution steps.
-
-Error messages are intended to be human-readable and should prefer explaining the expected source form over exposing parser internals.
-
-## 17. Execution budget
-
-Program initialization and each interactive action are bounded by an operation limit.
-
-The current interpreter limit is 100,000 operations per initialization/action.
-
-This protects the browser from many accidental endless loops, though the architecture roadmap moves execution into workers so hard termination is also available.
-
-## 18. Not currently part of the language
-
-Do not generate or document these as working syntax until their implementation lands:
+Do not generate these as working syntax until implementation lands:
 
 - comments;
-- imports/modules on current main;
-- public/private module modifiers;
 - classes or objects;
 - records/maps;
-- a stable decimal/float declaration type;
+- a stable float/decimal declaration type;
 - async/await;
 - try/catch;
 - break/continue;
 - match/switch;
-- member access with a dot;
-- symbolic comparison operators;
-- arbitrary DOM or browser access.
+- function values/lambdas;
+- arbitrary DOM/browser access;
+- remote/package imports.

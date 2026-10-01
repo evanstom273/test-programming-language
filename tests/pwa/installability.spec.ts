@@ -49,7 +49,7 @@ test('Pages PWA has decodable icons and starts offline after a browser restart',
     await expect(offline.locator('.cm-content')).not.toBeEmpty();
     await offline.getByRole('button', { name: 'Run', exact: true }).click();
     await expect(offline.getByRole('alert')).toHaveCount(0);
-    await expect(offline.getByRole('log')).not.toBeEmpty();
+    await expect(offline.getByRole('log')).toContainText('Hello Lyra');
   } finally {
     await context.close();
   }

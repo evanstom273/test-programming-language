@@ -1,10 +1,10 @@
 # Language conventions and style guide
 
-These are source-style conventions, not all hard grammar rules. They exist so human-written and agent-generated Language Lab code looks like the same language.
+These conventions keep human-written and agent-generated .lang code recognizably Language Lab.
 
-## 1. Prefer camelCase identifiers
+## Naming
 
-Preferred:
+Prefer camelCase identifiers:
 
 ~~~text
 playerName
@@ -13,14 +13,15 @@ enemyDamage
 numberOne
 ~~~
 
-Avoid attempting underscore names because underscores are not currently legal identifier characters.
+Identifiers do not currently support underscores.
+
+Enum type names should generally use PascalCase:
 
 ~~~text
-player_name
-starting_health
+enum Difficulty [easy, normal, hard].
 ~~~
 
-## 2. Types use the mandatory colon
+## Mandatory typed colons
 
 Always:
 
@@ -30,37 +31,18 @@ function heal(integer: amount).
 for integer: i from 1 to 10, do.
 ~~~
 
-Never:
+Never omit the colon.
 
-~~~text
-integer health = 100.
-function heal(integer amount).
-for integer i from 1 to 10, do.
-~~~
-
-The colon is part of the language's identity.
-
-## 3. Periods, never semicolons
-
-Correct:
+## Periods, never semicolons
 
 ~~~text
 health = health - 10.
 print(health).
 ~~~
 
-Wrong:
+Agents should explicitly scan generated .lang for stray semicolons.
 
-~~~text
-health = health - 10;
-print(health);
-~~~
-
-This is the easiest habit to accidentally import from JavaScript/C-like languages. Agents should specifically check generated .lang source for stray semicolons.
-
-## 4. Use explicit block endings
-
-Preferred layout:
+## Explicit block endings
 
 ~~~text
 if alive, do.
@@ -70,9 +52,10 @@ else, do.
 end if.
 ~~~
 
-Likewise:
+Use:
 
 ~~~text
+end if.
 end while.
 end for.
 end function.
@@ -81,22 +64,9 @@ end button.
 
 Do not invent braces.
 
-## 5. Indent blocks with four spaces
+Indent blocks with four spaces.
 
-Preferred:
-
-~~~text
-button "Attack", do.
-    if enemyHealth is greater than 0, do.
-        enemyHealth = enemyHealth - damage.
-        print("Enemy HP:", enemyHealth).
-    end if.
-end button.
-~~~
-
-Indentation is for readability; explicit end markers define the block.
-
-## 6. Prefer English comparisons
+## Comparisons stay English-like
 
 Use:
 
@@ -107,15 +77,9 @@ difficulty is hard
 gameOver is false
 ~~~
 
-Do not invent:
+Do not invent symbolic comparisons.
 
-~~~text
-health > 0
-health <= 25
-difficulty == hard
-~~~
-
-## 7. Arithmetic may use words or symbols
+## Arithmetic may be words or symbols
 
 Both are valid:
 
@@ -124,80 +88,95 @@ health = health minus damage.
 health = health - damage.
 ~~~
 
-Recommended style:
+Use whichever is clearer in context.
 
-- use symbols for compact mathematical expressions;
-- use word forms when they read especially naturally;
-- do not force one form throughout the language.
+## Counting loops
 
-Examples:
+Prefer Python-style range when you want compact conventional counting:
 
 ~~~text
-integer: area = width * height.
-integer: remaining = health minus damage.
+for x in range(10), do.
+    print(x).
+end for.
 ~~~
 
-## 8. Keep declarations close to their purpose
+Remember that range stop is exclusive.
 
-Top-level persistent state should be easy to find.
+Use the explicit typed form when the inclusive endpoint reads more naturally or when you deliberately want the type visible:
 
-A useful order for interactive programs is:
+~~~text
+for integer: x from 1 to 10, do.
+    print(x).
+end for.
+~~~
 
-1. enums;
-2. exported configuration;
-3. user inputs;
-4. persistent program state;
-5. functions;
-6. buttons.
+The two forms intentionally have different endpoint semantics. Do not silently translate one into the other without accounting for that.
+
+## Suggested source order
+
+For an interactive entry module:
+
+1. imports;
+2. enums;
+3. exported configuration;
+4. user inputs;
+5. persistent state;
+6. functions;
+7. buttons/top-level actions.
 
 Example:
 
 ~~~text
+import "./lib/combat.lang" as combat.
+
 enum Difficulty [easy, normal, hard].
 
-export text: title = "Arena".
 export integer: startingHealth = 100.
-
 input text: heroName = "Lyra".
-input Difficulty: difficulty = normal.
 
 integer: health = startingHealth.
-integer: enemyHealth = 50.
-
-function enemyDamage().
-    return randomInteger(5, 10).
-end function.
 
 button "Attack", do.
-    enemyHealth = enemyHealth - randomInteger(8, 15).
+    integer: damage = combat.damage().
+    print(heroName, "deals", damage, "damage.").
 end button.
 ~~~
 
-## 9. Keep export, input, and ordinary state distinct
+## export, input, public, and internal state
 
-Use export for author/configuration controls:
+Use each for its actual purpose:
 
 ~~~text
 export integer: startingHealth = 100.
-~~~
-
-Use input for the person running the program:
-
-~~~text
 input text: heroName = "Lyra".
+integer: currentHealth = startingHealth.
+public function damage().
+    return randomInteger(8, 15).
+end function.
 ~~~
 
-Use an ordinary declaration for internal state:
+Meanings:
+
+- export: Inspector/configuration exposure;
+- input: application/user control;
+- public: module function visibility;
+- ordinary declaration: internal program state.
+
+Do not overload export as module export.
+
+## Module imports
+
+Prefer explicit relative namespaces:
 
 ~~~text
-integer: currentHealth = startingHealth.
+import "./lib/maths.lang" as maths.
 ~~~
 
-Do not expose every internal variable just because the IDE can render a control for it.
+Avoid copying module globals into the caller's namespace. Namespace qualification makes origin obvious.
 
-## 10. Functions should have verb-like names where sensible
+## Functions
 
-Examples:
+Prefer verb-like names where sensible:
 
 ~~~text
 calculateDamage
@@ -206,93 +185,50 @@ resetGame
 enemyAttack
 ~~~
 
-Enums should generally use PascalCase type names:
+## Output is not storage
 
-~~~text
-enum Difficulty [easy, normal, hard].
-enum Direction [north, east, south, west].
-~~~
+print is observable output, not a data store. Keep actual state in variables.
 
-Enum values should use lower camel/simple lowercase names.
+## Unsupported syntax stays unsupported
 
-## 11. Use print for observable output, not hidden state
+Do not invent syntax because another language has it.
 
-Good:
+Check support before using:
 
-~~~text
-print("Enemy HP:", enemyHealth).
-~~~
+- comments;
+- records/classes;
+- decimal/float declaration types;
+- async/await;
+- exception handling;
+- break/continue;
+- package/remote imports.
 
-Do not rely on output text as a data store. Keep real values in typed variables.
-
-## 12. Avoid accidental enum collisions
-
-Until qualified enum members exist, enum values are bare identifiers.
+## Error messages
 
 Prefer:
-
-~~~text
-enum Difficulty [easy, normal, hard].
-enum Direction [north, east, south, west].
-~~~
-
-Be cautious with several enums all containing generic values such as on, off, normal, default if that makes source ambiguous to a reader.
-
-## 13. Treat current unsupported syntax as unsupported
-
-Do not invent a feature because it would look familiar from another language.
-
-Before generating .lang code, confirm support for:
-
-- imports;
-- comments;
-- methods/member access;
-- custom records/classes;
-- decimal declaration types;
-- async;
-- exception handling;
-- break/continue.
-
-If the parser does not support it, do not silently pretend it does.
-
-## 14. Write user-facing errors in plain language
-
-When extending the implementation, prefer:
 
 ~~~text
 Expected a variable name after integer:.
 ~~~
 
-over:
+over parser-internal jargon.
 
-~~~text
-Unexpected token at parser state 17.
-~~~
+Diagnostics should tell the programmer what was expected and show a valid form where useful.
 
-Diagnostics should tell the programmer what was expected and, when useful, show a valid form.
+## Preserve the language identity
 
-## 15. Preserve the language's identity
+Language Lab is not JavaScript or Python with renamed keywords.
 
-Language Lab is not JavaScript with words renamed.
+A new syntax feature should improve readability, usability, interoperability, or remove ambiguity.
 
-New syntax should answer at least one of these:
+Borrowing a familiar construct is fine when it fits the language. Python-style range loops are an example: the range call is familiar, while , do. and end for. preserve Language Lab's block style.
 
-- Is it easier to read?
-- Is it easier to write?
-- Does it remove ambiguity?
-- Does it fit the executable-pseudocode style?
-- Is conventional syntax so familiar that using words would be worse?
-
-Avoid novelty for novelty's sake.
-
-## 16. Examples should actually parse
-
-Documentation and agent-generated examples should be treated as executable artifacts.
+## Examples should parse
 
 When changing syntax:
 
-1. update parser/runtime tests;
-2. update the language docs;
-3. update representative .lang examples;
-4. check for old syntax in docs;
-5. prefer conformance tests over prose-only promises.
+1. update lexer/parser/analysis/runtime as needed;
+2. add valid and invalid tests;
+3. update the docs;
+4. update examples/completions;
+5. run conformance/build checks.

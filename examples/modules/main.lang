@@ -1,0 +1,12 @@
+import "./lib/maths.lang" as maths.
+
+export text: title = "Module calculator".
+input integer: number = 10.
+
+button "Double", do.
+    print(title, maths.double(number)).
+end button.
+
+button "Roll dice", do.
+    print(maths.roll()).
+end button.

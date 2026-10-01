@@ -1,37 +1,37 @@
 # Instructions for coding agents working on Language Lab
 
-Read this file before creating or editing .lang source or changing the language implementation.
+Read this before creating/editing .lang source or changing the language implementation.
 
-## Source-of-truth order
+## Source of truth
 
-For current behavior, inspect:
+Check, in order:
 
 1. docs/language-spec.md
 2. docs/syntax.md
 3. src/language/lexer.ts
 4. src/language/parser.ts
-5. src/language/runtime.ts
-6. language/runtime/conformance tests
+5. src/language/analysis.ts
+6. src/language/runtime.ts
+7. language/runtime/conformance tests
 
-If a feature branch intentionally changes the language, its implementation/tests take precedence and the docs must be updated with it.
+If the current feature branch intentionally changes syntax, its implementation/tests take precedence and the docs must be updated in the same work.
 
 ## Never invent .lang syntax
 
-Language Lab is evolving. Do not assume a feature exists because Python, JavaScript, GDScript, or another language has it.
+Do not assume a feature exists because Python, JavaScript, TypeScript, GDScript, or another language has it.
 
-If syntax is not implemented, either use supported syntax or explicitly propose the language change.
+Use supported syntax or explicitly implement/propose the language change.
 
 ## Mandatory source conventions
 
-Typed declarations require a colon:
+Typed declarations use a colon:
 
 ~~~text
 integer: health = 100.
-text: name = "Lyra".
 function heal(integer: amount).
 ~~~
 
-Statements end with periods, not semicolons:
+Statements use periods, not semicolons:
 
 ~~~text
 health = health - 10.
@@ -46,32 +46,31 @@ if alive, do.
 end if.
 ~~~
 
-Use explicit end markers:
+Explicit end markers are required.
+
+Identifiers begin with a letter and contain letters/digits only. Prefer camelCase.
+
+## Current counting loops
+
+Python-style range:
 
 ~~~text
-end if.
-end while.
+for x in range(10), do.
+    print(x).
 end for.
-end function.
-end button.
 ~~~
 
-Identifiers currently begin with a letter and contain letters/digits only. Prefer camelCase.
+range follows Python semantics: stop is exclusive and forms are range(stop), range(start, stop), range(start, stop, step).
 
-## Do not write these unless the branch implements them
+The older typed form remains supported and is inclusive:
 
-- semicolons;
-- braces as block syntax;
-- underscore identifiers;
-- symbolic comparisons such as ==, !=, <, <=, >, >=;
-- comments;
-- imports/modules/public on a branch where modules have not landed;
-- object/member syntax;
-- classes/records;
-- async/await;
-- try/catch;
-- break/continue;
-- float/decimal/number declarations.
+~~~text
+for integer: x from 1 to 10, do.
+    print(x).
+end for.
+~~~
+
+Do not confuse the endpoint semantics.
 
 ## Current important features
 
@@ -82,13 +81,15 @@ Supported source includes:
 - export -> Inspector;
 - input -> running app input;
 - button -> running app action;
-- assignments;
-- print;
+- assignments and print;
 - if / elif / else;
 - while;
 - for each;
+- Python-style range loops;
 - typed inclusive range loops;
 - named functions with typed parameters;
+- public module functions;
+- relative namespaced imports;
 - return;
 - arrays/indexing;
 - English comparisons and boolean logic;
@@ -97,15 +98,14 @@ Supported source includes:
 
 ## Preserve semantic distinctions
 
-Never overload these without an explicit design decision:
-
 ~~~text
 export = Inspector/configuration exposure
 input  = application/user input
+public = module visibility
 runtime variable = current-session state
 ~~~
 
-The planned module system uses a separate visibility concept such as public. Do not reinterpret export as module export.
+Do not reinterpret export as module export.
 
 ## Architecture rules
 
@@ -114,54 +114,69 @@ Do not put language semantics in React components.
 The intended boundaries are:
 
 ~~~text
-workspace
-language services
-Program
+workspace / VFS
+parser + static analysis
+immutable Program
 RuntimeSession
-UI model
+worker protocol
+serializable UI model
 host renderer
 build targets
 ~~~
 
-The web IDE is a host for the language.
+Static analysis must not execute arbitrary user functions.
 
-Static analysis/Inspector discovery should not execute arbitrary user functions.
+The web IDE is one host for the language.
 
-Program/code structure should be separable from mutable RuntimeSession state.
-
-## When adding language syntax
+## When adding syntax
 
 Every language change should include:
 
-- lexer/parser work as required;
-- runtime or analysis semantics;
+- lexer/parser changes as needed;
+- static-analysis rules;
+- runtime semantics;
 - useful diagnostics;
 - valid examples;
-- invalid examples/tests;
-- regression/conformance coverage;
-- updates to relevant docs.
+- invalid/regression tests;
+- docs;
+- editor completion/highlighting where relevant.
 
-Do not add syntax only to highlighting/autocomplete.
+Do not add syntax only to CodeMirror.
 
 ## When generating .lang programs
 
-Before presenting or committing a program:
+Before presenting or committing source:
 
 1. scan for stray semicolons;
-2. verify every typed declaration has a colon;
-3. verify each block has the matching end marker;
+2. verify typed declarations have colons;
+3. verify every block has its end marker;
 4. verify comparisons use supported English forms;
 5. verify identifiers contain no underscores;
 6. avoid unsupported comments;
-7. keep export, input, and internal variables purposeful;
-8. run validation/tests when tooling is available.
+7. use correct range endpoint semantics;
+8. keep export/input/public/internal state purposeful;
+9. validate/build/test when tooling is available.
+
+## Do not write these unless the branch implements them
+
+- semicolons;
+- braces as block syntax;
+- underscore identifiers;
+- symbolic comparisons such as ==, !=, <, <=, >, >=;
+- comments;
+- records/classes;
+- async/await;
+- try/catch;
+- break/continue;
+- float/decimal declarations;
+- remote/package imports.
 
 ## Git workflow
 
 Unless the user explicitly says otherwise:
 
-- work on a feature/docs branch;
+- use a feature/docs branch;
 - avoid unrelated changes;
 - run appropriate checks;
-- open a PR;
-- do not merge the PR yourself.
+- open/update a PR;
+- do not merge it yourself.
