@@ -6,6 +6,7 @@ These documents describe the behavior on main at the time they were written. Lan
 
 ## Start here
 
+- [Standalone HTML applications](standalone-html.md) — export one self-contained app file, without the IDE.
 - **running-lang-files.md** — CLI commands, temporary browser runner, file opening, explicit saving, and PWA/platform support.
 
 - **language-spec.md** — the current language contract: lexical rules, statements, expressions, scope, errors, and execution semantics.
