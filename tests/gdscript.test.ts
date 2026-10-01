@@ -372,3 +372,14 @@ it('keeps text concatenation with vectors and rejects non-finite intermediate re
     runSource('float: n = 10. while true, do. n = n * n. end while.'),
   ).toThrow(/finite/);
 });
+
+it('bounds aggregate queued payloads and clears them after an error', () => {
+  const source =
+    'text: payload = ' +
+    JSON.stringify('a'.repeat(64000)) +
+    '. signal data(text: message). button "Flood", do. for x in range(100), do. emit data(payload). end for. end button. button "Recover", do. emit data("ok"). print("recovered"). end button.';
+  const session = new ProgramSession(source);
+  expect(() => session.pressButton('button-0')).toThrow(/Event payload limit/);
+  session.pressButton('button-1');
+  expect(session.snapshot().output).toEqual(['recovered']);
+});

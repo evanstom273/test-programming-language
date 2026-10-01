@@ -157,8 +157,10 @@ export class RuntimeSession {
     context: RuntimeContext;
     event: string;
     args: Value[];
+    payloadSize: number;
   }[] = [];
   private eventCount = 0;
+  private queuedPayloadSize = 0;
   private readonly shared: RuntimeContext['shared'];
   readonly program: Program;
 
@@ -243,6 +245,7 @@ export class RuntimeSession {
       this.drainEvents();
     } catch (error) {
       this.queue.length = 0;
+      this.queuedPayloadSize = 0;
       if (
         error instanceof LanguageError &&
         error.span.start.offset === 0 &&
@@ -260,11 +263,26 @@ export class RuntimeSession {
         1,
         this.shared.lastSpan,
       );
-    this.queue.push({ context, event, args: structuredClone(args) });
+    const payloadSize = JSON.stringify(args).length;
+    if (this.queuedPayloadSize + payloadSize > 4_000_000)
+      throw new LanguageError(
+        'Event payload limit exceeded.',
+        1,
+        1,
+        this.shared.lastSpan,
+      );
+    this.queuedPayloadSize += payloadSize;
+    this.queue.push({
+      context,
+      event,
+      args: structuredClone(args),
+      payloadSize,
+    });
   }
   private drainEvents() {
     while (this.queue.length) {
       const event = this.queue.shift()!;
+      this.queuedPayloadSize -= event.payloadSize;
       for (const handler of event.context.module.statements) {
         if (handler.kind !== 'handler' || handler.event !== event.event)
           continue;
