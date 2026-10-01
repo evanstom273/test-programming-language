@@ -1,0 +1,25 @@
+enum Operation [add, subtract, multiply, divide].
+
+export text: title = "Calculator".
+
+input integer: numberOne = 10.
+input integer: numberTwo = 5.
+input Operation: operation = add.
+
+function calculate().
+    if operation is add, do.
+        return numberOne + numberTwo.
+    elif operation is subtract, do.
+        return numberOne - numberTwo.
+    elif operation is multiply, do.
+        return numberOne * numberTwo.
+    elif operation is divide, do.
+        return numberOne / numberTwo.
+    else, do.
+        return 0.
+    end if.
+end function.
+
+button "Calculate", do.
+    print(title, calculate()).
+end button.
